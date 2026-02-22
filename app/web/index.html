@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watery AI Agent</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --sidebar-bg: #ffffff;
+            --chat-bg: #ffffff;
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            --border-color: #e0e0e0;
+            --primary-color: #1a73e8;
+            --user-msg-bg: #e3f2fd;
+            --ai-msg-bg: #f5f5f5;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 左侧边栏 */
+        .sidebar {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .new-chat-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .new-chat-btn:hover {
+            background-color: #1557b0;
+        }
+
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        /* 代理状态指示器 */
+        .proxy-status-card {
+            padding: 12px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-top: auto;
+            font-size: 13px;
+        }
+
+        .proxy-status-card.error {
+            border-color: #ff5252;
+            background-color: #ffebee;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .status-dot.online { background-color: #4caf50; }
+        .status-dot.offline { background-color: #ff5252; }
+        .status-dot.warning { background-color: #ffc107; }
+
+        .history-item {
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background-color 0.2s;
+        }
+
+        .history-item:hover {
+            background-color: var(--bg-color);
+        }
+
+        .history-item.active {
+            background-color: #e8f0fe;
+            color: var(--primary-color);
+            font-weight: 500;
+        }
+
+        .nav-item {
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background-color: var(--bg-color);
+        }
+
+        .nav-item.active {
+            background-color: #e8f0fe;
+            color: var(--primary-color);
+        }
+
+        .model-selector {
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .model-selector select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            margin-top: 8px;
+        }
+
+        /* 主聊天区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--chat-bg);
+        }
+
+        .chat-header {
+            height: 60px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 15px;
+            border-radius: 12px;
+            line-height: 1.5;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: var(--user-msg-bg);
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background-color: var(--ai-msg-bg);
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            background-color: var(--chat-bg);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            font-size: 16px;
+            resize: none;
+            outline: none;
+            height: 54px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .send-btn {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+
+        .send-btn:hover {
+            background-color: #1557b0;
+        }
+
+        .send-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Markdown 样式简易支持 */
+        .message pre {
+            background-color: #2d2d2d;
+            color: #ccc;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .message code {
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo">Watery AI</div>
+        
+        <button class="new-chat-btn" onclick="createNewChat()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            新对话
+        </button>
+
+        <div class="history-list" id="historyList">
+            <!-- 历史对话列表将在这里动态生成 -->
+        </div>
+
+        <!-- 代理健康状态展示 -->
+        <div id="proxyStatusCard" class="proxy-status-card" style="margin-bottom: 15px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                   <span id="proxyDot" class="status-dot warning"></span>
+                   <span id="proxyText">检测代理中...</span>
+                </div>
+                <span id="proxyLatency" style="color: var(--text-secondary); font-size: 11px;">--ms</span>
+            </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 15px; margin-bottom: 15px;">
+            <div class="nav-item">📚 知识库 (待开发)</div>
+            <div class="nav-item">🛠️ 技能库 (待开发)</div>
+            <div class="nav-item">⚙️ 设置</div>
+        </div>
+
+        <div class="model-selector">
+            <label for="modelSelect">当前模型:</label>
+            <select id="modelSelect">
+                <option value="ark-code-latest">ark-code-latest (默认)</option>
+                <option value="doubao-seed-code">doubao-seed-code</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro (代理)</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (代理)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <span id="chatTitle">新对话</span>
+            <button onclick="deleteCurrentChat()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #ff4d4f; color: #ff4d4f; background: white; cursor: pointer;">删除对话</button>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <!-- 初始欢迎消息将由 JS 动态生成或从历史记录恢复 -->
+        </div>
+
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <textarea class="chat-input" id="userInput" placeholder="输入消息..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const modelSelect = document.getElementById('modelSelect');
+        const historyList = document.getElementById('historyList');
+        const chatTitle = document.getElementById('chatTitle');
+
+        // 代理状态更新逻辑
+        async function updateProxyUI() {
+            try {
+                const response = await fetch('/api/v1/proxy/status');
+                const data = await response.json();
+                const dot = document.getElementById('proxyDot');
+                const text = document.getElementById('proxyText');
+                const latency = document.getElementById('proxyLatency');
+                const card = document.getElementById('proxyStatusCard');
+
+                if (!dot || !text || !latency || !card) return;
+
+                if (data.status === 'ok') {
+                    dot.className = 'status-dot online';
+                    text.innerText = '代理已就绪';
+                    latency.innerText = `${data.latency}ms`;
+                    card.classList.remove('error');
+                } else if (data.status === 'timeout') {
+                    dot.className = 'status-dot offline';
+                    text.innerText = '代理超时';
+                    latency.innerText = 'TimeOut';
+                    card.classList.add('error');
+                } else {
+                    dot.className = 'status-dot offline';
+                    text.innerText = '代理异常';
+                    card.classList.add('error');
+                }
+            } catch (err) {
+                console.error("Failed to check proxy status:", err);
+            }
+        }
+
+        // 初始化加载时和每 30 秒检查一次
+        setInterval(updateProxyUI, 30000);
+
+        let currentChatId = null;
+        let chats = {}; // 存储所有对话 { id: { title: string, messages: [] } }
+
+        // 页面加载时尝试从 localStorage 恢复历史记录
+        window.onload = () => {
+            updateProxyUI();
+            const savedChats = localStorage.getItem('wateryChats');
+            if (savedChats) {
+                try {
+                    chats = JSON.parse(savedChats);
+                    renderHistoryList();
+                    
+                    // 尝试加载最后一次的对话
+                    const chatIds = Object.keys(chats);
+                    if (chatIds.length > 0) {
+                        loadChat(chatIds[chatIds.length - 1]);
+                    } else {
+                        createNewChat();
+                    }
+                } catch (e) {
+                    console.error("Failed to parse chats", e);
+                    createNewChat();
+                }
+            } else {
+                createNewChat();
+            }
+        };
+
+        function saveChats() {
+            localStorage.setItem('wateryChats', JSON.stringify(chats));
+            renderHistoryList();
+        }
+
+        function createNewChat() {
+            currentChatId = 'chat_' + Date.now();
+            chats[currentChatId] = {
+                title: '新对话',
+                messages: []
+            };
+            saveChats();
+            loadChat(currentChatId);
+        }
+
+        function loadChat(chatId) {
+            if (!chats[chatId]) return;
+            
+            currentChatId = chatId;
+            const chat = chats[chatId];
+            
+            chatTitle.textContent = chat.title;
+            chatMessages.innerHTML = '';
+            
+            if (chat.messages.length === 0) {
+                showWelcomeMessage();
+            } else {
+                chat.messages.forEach(msg => {
+                    appendMessage(msg.role, msg.content);
+                });
+            }
+            
+            renderHistoryList();
+        }
+
+        function deleteCurrentChat() {
+            if (!currentChatId || !chats[currentChatId]) return;
+            
+            if (confirm("确定要删除当前对话吗？")) {
+                delete chats[currentChatId];
+                saveChats();
+                
+                const remainingIds = Object.keys(chats);
+                if (remainingIds.length > 0) {
+                    loadChat(remainingIds[remainingIds.length - 1]);
+                } else {
+                    createNewChat();
+                }
+            }
+        }
+
+        function renderHistoryList() {
+            historyList.innerHTML = '';
+            // 倒序渲染，最新的在上面
+            Object.keys(chats).reverse().forEach(chatId => {
+                const chat = chats[chatId];
+                const div = document.createElement('div');
+                div.className = `history-item ${chatId === currentChatId ? 'active' : ''}`;
+                div.textContent = chat.title;
+                div.onclick = () => loadChat(chatId);
+                historyList.appendChild(div);
+            });
+        }
+
+        function showWelcomeMessage() {
+            chatMessages.innerHTML = `
+                <div class="message assistant">
+                    你好！我是 Watery AI Agent。我已经准备好协助你了。
+                </div>
+            `;
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function appendMessage(role, content) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+            
+            // 简单的换行处理
+            const formattedContent = content.replace(/\n/g, '<br>');
+            msgDiv.innerHTML = formattedContent;
+            
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // 禁用输入
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+
+            // 显示用户消息
+            appendMessage('user', text);
+            
+            // 更新当前对话状态
+            if (!chats[currentChatId]) return;
+            
+            // 如果是第一条消息，更新标题
+            if (chats[currentChatId].messages.length === 0) {
+                chats[currentChatId].title = text.substring(0, 15) + (text.length > 15 ? '...' : '');
+                chatTitle.textContent = chats[currentChatId].title;
+                renderHistoryList();
+            }
+            
+            chats[currentChatId].messages.push({ role: 'user', content: text });
+            saveChats();
+
+            // 显示加载中
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message assistant';
+            loadingDiv.id = loadingId;
+            loadingDiv.textContent = '思考中...';
+            chatMessages.appendChild(loadingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            try {
+                const response = await fetch('/api/v1/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messages: chats[currentChatId].messages,
+                        model: modelSelect.value
+                    })
+                });
+
+                const data = await response.json();
+                
+                // 移除加载中
+                document.getElementById(loadingId).remove();
+
+                if (response.ok) {
+                    appendMessage('assistant', data.content);
+                    chats[currentChatId].messages.push({ role: 'assistant', content: data.content });
+                    saveChats();
+                } else {
+                    appendMessage('assistant', `❌ 错误: ${data.detail || '请求失败'}`);
+                }
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+                appendMessage('assistant', `❌ 网络错误: ${error.message}`);
+            } finally {
+                // 恢复输入
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
+            }
+        }
+    </script>
+</body>
+</html>

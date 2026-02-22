@@ -1,0 +1,45 @@
+【项目背景与目标】
+我需要从零构建一个高度自动化的个人 AI 代理系统。后端部署在具有较好性能的 Linux 服务器上，通过 Docker 容器化运行。前端需要暴露 API 供我未来的 VSCode 插件和手机端调用。我希望成为系统的“使用者”而非“微操管理者”。
+
+【核心架构要求】
+
+工作池模式 (Work Pool & Orchestrator): >     * 中心化调度：由一个 Manager Agent 负责与用户交互，理解意图，拆解任务，并将子任务推入“工作池（Task Queue）”。
+
+并发执行：底层的 Worker Agents 异步从工作池中认领任务。
+
+任务依赖：支持图状依赖（DAG），例如任务 C 必须在任务 A 和 B 完成并产出结果后才能开始测试。
+
+动态 API 与模型路由 (Model Router Skill):
+
+系统需接入 Volcengine（火山引擎）和 Gemini API，且未来会新增 API。
+
+将“API 管理”本身作为一个 Skill。系统能定期查询各个 API Provider（如通过 GET /models），更新可用模型列表。
+
+路由逻辑：根据任务复杂度自动选择性价比最高或能力最强的模型，同时保留用户通过指令硬性指定 API/模型的最高权限。
+
+自生长技能与记忆网络 (Skills & Error Ledger):
+
+Skills 库：系统能根据我的要求，自动生成新的 Python 脚本或工具函数，并注册到可用技能列表中。
+
+错误纠正账本 (Error Ledger)：如果我指出它犯了错，或者它在任务回调中发现错误，必须将“错误情境+正确做法”记录为结构化文本（JSON/Markdown）。
+
+在执行同类任务时，Manager Agent 必须先检索 Error Ledger 和 Skills 库，将防错提示注入给 Worker Agent。
+
+数据与版本管理:
+
+使用 Git/GitHub 进行代码、Skills 配置和 Error Ledger 文本的跨端同步。
+
+复杂数据库（如用于知识库查询的向量数据库）在 Docker 内通过持久化 Volume 挂载，并通过读取同步好的 Git 文本在本地自建索引。
+
+【你的任务指令】
+请不要一次性写出所有代码，这会导致逻辑混乱。我们需要分阶段、增量式地构建。请你先阅读上述架构，然后只为我输出 Phase 1 的详细设计和可执行代码。
+
+Phase 1: 基础设施与动态 API 路由
+
+编写 docker-compose.yml 和 Dockerfile，搭建基于 Python (推荐使用 asyncio 友好的框架如 FastAPI) 的基础环境。
+
+设计 API 密钥管理的目录结构（.env）。
+
+编写 ModelRouter 模块：实现读取 Volcengine 和 Gemini 的凭证，构建一个可以动态管理模型列表、并接受统一格式请求输出结果的统一接口。
+
+请在给出 Phase 1 的代码后，等待我的测试反馈，再进行 Phase 2（工作池与队列管理器）的开发。

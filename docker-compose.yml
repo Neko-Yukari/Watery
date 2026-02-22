@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: watery_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - clash
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  clash:
+    image: metacubex/mihomo:latest
+    container_name: watery_clash
+    ports:
+      - "7890:7890"  # HTTP/HTTPS Proxy
+      - "9090:9090"  # REST API
+    volumes:
+      - ./data/clash:/root/.config/mihomo
+    restart: unless-stopped
