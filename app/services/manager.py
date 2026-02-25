@@ -69,21 +69,34 @@ class ManagerAgent:
                 content = content.split("```")[-1].split("```")[0].strip()
                 
             task_data = json.loads(content)
-            
-            # 4. 转化为 Task 对象并提交给编排器
+            raw_tasks = task_data.get("tasks", [])
+
+            # 4. 为每个任务分配 UUID 并建立 旧ID -> 新UUID 的映射表
+            import uuid
+            id_map: Dict[str, str] = {}
+            for t_item in raw_tasks:
+                old_id = t_item.get("id", str(uuid.uuid4()))
+                id_map[old_id] = str(uuid.uuid4())
+
+            # 5. 转化为 Task 对象（将依赖也替换为新 UUID）并提交给编排器
             tasks = []
-            for t_item in task_data.get("tasks", []):
+            for t_item in raw_tasks:
+                old_id = t_item.get("id")
+                new_id = id_map.get(old_id, str(uuid.uuid4()))
+                raw_deps = t_item.get("dependencies", [])
+                new_deps = [id_map.get(dep, dep) for dep in raw_deps]
+
                 task = Task(
-                    id=t_item.get("id"),
+                    id=new_id,
                     description=t_item.get("description"),
-                    dependencies=t_item.get("dependencies", [])
+                    dependencies=new_deps
                 )
                 tasks.append(task)
             
             if tasks:
                 await orchestrator.add_tasks(tasks)
                 logger.info(f"Successfully split and enqueued {len(tasks)} tasks.")
-                return {"status": "success", "tasks_count": len(tasks)}
+                return {"status": "success", "tasks_count": len(tasks), "task_ids": [t.id for t in tasks]}
             else:
                 return {"status": "error", "message": "No tasks generated."}
                 

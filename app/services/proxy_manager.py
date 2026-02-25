@@ -10,9 +10,10 @@ logger = logging.getLogger(__name__)
 
 class ProxyManager:
     def __init__(self):
-        self.clash_api_url = os.getenv("CLASH_API_URL", "http://clash:9090")
-        self.sub_url = os.getenv("PROXY_SUB_URL", "")
-        self.config_path = os.getenv("CLASH_CONFIG_PATH", "/app/data/clash/config.yaml")
+        # 统一从 Pydantic Settings 读取，不再零散使用 os.getenv
+        self.clash_api_url = settings.clash_api_url
+        self.sub_url = settings.subscription_url or ""
+        self.config_path = settings.clash_config_path
         self.proxy_status = "unknown"
         self.failed_reason = ""
 
@@ -97,7 +98,8 @@ class ProxyManager:
         """调用 Clash REST API 重载配置"""
         payload = {"path": "", "payload": ""} # 空 path 意味着重载当前配置文件
         try:
-            async with httpx.AsyncClient() as client:
+            # 内部调用不应受外部 proxy 环境变量干扰，设置 trust_env=False
+            async with httpx.AsyncClient(trust_env=False) as client:
                 res = await client.put(f"{self.clash_api_url}/configs", json=payload, timeout=5)
                 if res.status_code != 204:
                     logger.warning(f"Clash reload returned status: {res.status_code}")
@@ -107,19 +109,29 @@ class ProxyManager:
     async def get_health_status(self) -> Dict[str, Any]:
         """获取当前代理由测速组的状态信息"""
         try:
-            async with httpx.AsyncClient() as client:
+            # 内部调用不应受外部 proxy 环境变量干扰，设置 trust_env=False
+            async with httpx.AsyncClient(trust_env=False) as client:
                 # 获取代理状态
                 res = await client.get(f"{self.clash_api_url}/proxies/Gemini-Pool", timeout=2)
                 if res.status_code == 200:
                     data = res.json()
-                    # 检查是否有在线节点 (delay > 0)
+                    alive = data.get("alive", False)
+                    now = data.get("now", "")
                     history = data.get("history", [])
+                    # 优先使用有效的测速历史
                     if history and history[-1].get("delay", 0) > 0:
                         self.proxy_status = "alive"
-                        return {"status": "ok", "latency": history[-1].get("delay")}
+                        return {"status": "ok", "latency": history[-1].get("delay"), "node": now}
+                    # Clash alive=true 表示节点本身在线，即使尚无测速历史也应视为就绪
+                    elif alive and now:
+                        self.proxy_status = "alive"
+                        return {"status": "ok", "latency": None, "node": now}
                     else:
                         self.proxy_status = "timeout"
-                        return {"status": "timeout", "message": "All US nodes failed latency test."}
+                        return {"status": "timeout", "message": "All nodes failed latency test."}
+                elif res.status_code == 404:
+                    # 分组不存在通常是因为 Clash 的 config 还没载入
+                    return {"status": "initializing", "message": "Clash group not found yet."}
         except Exception as e:
             self.proxy_status = "error"
             return {"status": "error", "message": str(e)}

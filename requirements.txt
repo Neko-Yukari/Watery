@@ -1,3 +1,4 @@
+pyyaml>=6.0.1
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
 pydantic==2.6.1
@@ -9,3 +10,13 @@ chromadb==0.4.24
 numpy<2.0.0
 sqlalchemy==2.0.27
 sqlmodel==0.0.16
+# Phase 4 — PDF-to-Skills 流水线
+pypdf>=4.0.0
+pdfplumber>=0.11.0
+python-multipart>=0.0.6
+# ms-agent 三大能力集成（deep_research / code_genesis / doc_research）
+ms-agent>=1.5.0
+omegaconf>=2.3.0
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2
+rank_bm25>=0.2.2

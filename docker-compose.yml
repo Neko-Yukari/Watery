@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   api:
     build: .
     container_name: watery_api
     ports:
-      - "8000:8000"
+      - "18000:18000"
     env_file:
       - .env
     depends_on:
@@ -13,7 +11,11 @@ services:
     volumes:
       - .:/app
       - ./data:/app/data
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - ./data/pdfs:/app/data/pdfs         # Phase 4: PDF 上传持久化存储
+      - ./skills:/app/skills               # Phase 4: 生成技能目录持久化
+      - ./data/outputs:/app/data/outputs   # Phase 5: ms-agent 任务输出（深度研究 / 代码生成）
+      - ./projects:/app/projects           # Phase 5: ms-agent project 配置（深度研究 / 代码生成）
+    command: uvicorn app.main:app --host 0.0.0.0 --port 18000 --reload
     restart: unless-stopped
 
   clash:
@@ -21,7 +23,7 @@ services:
     container_name: watery_clash
     ports:
       - "7890:7890"  # HTTP/HTTPS Proxy
-      - "9090:9090"  # REST API
+      - "7899:9090"  # REST API (Host 7899 -> Container 9090)
     volumes:
       - ./data/clash:/root/.config/mihomo
     restart: unless-stopped

@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/^cd \"d:\\\\UE\\\\The-heritaged-blade\"; if \\(-not \\(Test-Path \"Plugins\"\\)\\) \\{ New-Item -ItemType Directory -Path \"Plugins\" \\| Out-Null; Write-Host \"Plugins folder created\" \\} else \\{ Write-Host \"Plugins folder already exists\" \\}$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		}
+	}
+}

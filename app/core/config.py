@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 import os
 
 class Settings(BaseSettings):
@@ -6,15 +7,27 @@ class Settings(BaseSettings):
     volcengine_api_key: str
     volcengine_base_url: str = "https://ark.cn-beijing.volces.com/api/coding/v3"
     gemini_api_key: str = ""
-    
+
+    # Phase 5: ms-agent 搜索引擎 API Key（可选，deep_research 用）
+    exa_api_key: Optional[str] = None          # https://exa.ai — 高质量网络搜索
+    serpapi_api_key: Optional[str] = None       # https://serpapi.com — Google 搜索备选
+    modelscope_api_key: Optional[str] = None    # ModelScope 平台（可选）
+
     # App Config
     environment: str = "development"
     log_level: str = "INFO"
     data_dir: str = "/app/data"
-    
+
     # DB Config
     sqlite_db_name: str = "watery.db"
     vector_db_dir: str = "vector_db"
+
+    # Proxy / Clash Config
+    clash_api_url: str = "http://clash:9090"
+    proxy_url: str = "http://clash:7890"
+    subscription_url: Optional[str] = None        # 未配置时 ProxyManager 跳过订阅更新
+    proxy_region_filter: str = "美国|US"          # 节点过滤关键词（正则）
+    clash_config_path: str = "/app/data/clash/config.yaml"
 
     @property
     def sqlite_db_path(self) -> str:

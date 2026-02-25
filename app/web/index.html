@@ -9,12 +9,17 @@
             --bg-color: #f0f2f5;
             --sidebar-bg: #ffffff;
             --chat-bg: #ffffff;
+            --task-bg: #f8f9fa;
             --text-primary: #333333;
             --text-secondary: #666666;
             --border-color: #e0e0e0;
             --primary-color: #1a73e8;
             --user-msg-bg: #e3f2fd;
             --ai-msg-bg: #f5f5f5;
+            --pending-color: #ffc107;
+            --running-color: #2196f3;
+            --completed-color: #4caf50;
+            --failed-color: #f44336;
         }
 
         * {
@@ -40,6 +45,7 @@
             display: flex;
             flex-direction: column;
             padding: 20px;
+            flex-shrink: 0;
         }
 
         .logo {
@@ -89,6 +95,11 @@
         .proxy-status-card.error {
             border-color: #ff5252;
             background-color: #ffebee;
+        }
+        
+        .proxy-status-card.initializing {
+            border-color: #ffc107;
+            background-color: #fff9c4;
         }
 
         .status-dot {
@@ -158,14 +169,132 @@
             margin-top: 8px;
         }
 
+        /* 模态框样式 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            width: 80%;
+            max-width: 800px;
+            height: 80%;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .modal-close {
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: var(--text-secondary);
+        }
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .modal-body pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+
         /* 主聊天区 */
         .main-content {
             flex: 1;
             display: flex;
             flex-direction: column;
             background-color: var(--chat-bg);
+            border-right: 1px solid var(--border-color);
         }
 
+        /* 任务看板 */
+        .task-sidebar {
+            width: 300px;
+            background-color: var(--task-bg);
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            flex-shrink: 0;
+        }
+
+        .task-header {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .task-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .task-item {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 13px;
+            position: relative;
+        }
+
+        .task-status-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            float: right;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .tag-pending { background-color: #fff8e1; color: #ffa000; }
+        .tag-running { background-color: #e3f2fd; color: #1976d2; }
+        .tag-completed { background-color: #e8f5e9; color: #388e3c; }
+        .tag-failed { background-color: #ffebee; color: #d32f2f; }
+
+        .task-desc {
+            font-weight: 500;
+            margin-bottom: 6px;
+            display: block;
+            margin-top: 5px;
+            word-break: break-all;
+        }
+
+        .task-meta {
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        /* 主聊天区 */
         .chat-header {
             height: 60px;
             border-bottom: 1px solid var(--border-color);
@@ -268,6 +397,86 @@
         .message code {
             font-family: monospace;
         }
+
+        /* ── C-1: 工具调用卡片 ── */
+        .tool-call-card {
+            background: #f0f4ff;
+            border-left: 3px solid #1a73e8;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin: 6px 0;
+            font-size: 12px;
+        }
+        .tool-call-card.error {
+            border-left-color: #d32f2f;
+            background: #fff0f0;
+        }
+        .tool-call-header {
+            font-weight: 600;
+            color: #1a73e8;
+            margin-bottom: 4px;
+        }
+        .tool-call-card.error .tool-call-header {
+            color: #d32f2f;
+        }
+        .tool-call-result {
+            color: #555;
+            word-break: break-all;
+        }
+
+        /* ── C-2: Tab 导航 ── */
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            padding: 6px 10px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 5px 4px;
+            border: 1px solid transparent;
+            background: transparent;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--text-secondary);
+            transition: all 0.15s;
+        }
+        .tab-btn:hover { background: #f3f4f6; }
+        .tab-btn.active {
+            background: #e8f0fe;
+            color: var(--primary-color);
+            font-weight: 600;
+            border-color: var(--border-color);
+            border-bottom-color: #e8f0fe;
+        }
+        .tab-panel { display: none; flex: 1; overflow-y: auto; padding: 8px; flex-direction: column; gap: 6px; }
+        .tab-panel.active { display: flex; }
+        .panel-action-bar { display: flex; gap: 6px; margin-bottom: 6px; }
+        .panel-action-bar button {
+            flex: 1; padding: 5px; font-size: 12px;
+            background: var(--primary-color); color: white;
+            border: none; border-radius: 6px; cursor: pointer;
+        }
+        .research-card, .code-card {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+        .research-card .rc-title, .code-card .rc-title {
+            font-weight: 600; margin-bottom: 3px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .rc-meta { color: var(--text-secondary); font-size: 11px; }
+        .rc-status {
+            display: inline-block; padding: 1px 6px;
+            border-radius: 10px; font-size: 10px; font-weight: 600;
+        }
+        .rc-status.running { background: #fff3cd; color: #856404; }
+        .rc-status.completed { background: #d4edda; color: #155724; }
+        .rc-status.failed { background: #f8d7da; color: #721c24; }
+        .rc-status.pending { background: #e2e3e5; color: #383d41; }
     </style>
 </head>
 <body>
@@ -296,26 +505,30 @@
         </div>
 
         <div style="border-top: 1px solid var(--border-color); padding-top: 15px; margin-bottom: 15px;">
-            <div class="nav-item">📚 知识库 (待开发)</div>
-            <div class="nav-item">🛠️ 技能库 (待开发)</div>
+            <div class="nav-item" onclick="openModal('knowledge')">📚 知识库</div>
+            <div class="nav-item" onclick="openModal('skills')">🛠️ 技能库</div>
+            <div class="nav-item" onclick="openModal('errors')">📓 错题集</div>
             <div class="nav-item">⚙️ 设置</div>
         </div>
 
         <div class="model-selector">
             <label for="modelSelect">当前模型:</label>
             <select id="modelSelect">
-                <option value="ark-code-latest">ark-code-latest (默认)</option>
-                <option value="doubao-seed-code">doubao-seed-code</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro (代理)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (代理)</option>
+                <option value="ark-code-latest">加载中...</option>
             </select>
         </div>
     </div>
 
     <div class="main-content">
         <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <span id="chatTitle">新对话</span>
-            <button onclick="deleteCurrentChat()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #ff4d4f; color: #ff4d4f; background: white; cursor: pointer;">删除对话</button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="chatTitle">新对话</span>
+                <span id="intentionBadge" style="display: none; background: #e8f0fe; color: #1a73e8; font-size: 11px; padding: 2px 8px; border-radius: 10px;">任务模式</span>
+            </div>
+            <div>
+                <button onclick="toggleIntentionMode()" id="intentionToggleBtn" style="margin-right: 10px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--primary-color); color: var(--primary-color); background: white; cursor: pointer; font-size: 13px;">切换任务模式</button>
+                <button onclick="deleteCurrentChat()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #ff4d4f; color: #ff4d4f; background: white; cursor: pointer; font-size: 13px;">删除</button>
+            </div>
         </div>
         
         <div class="chat-messages" id="chatMessages">
@@ -324,13 +537,61 @@
 
         <div class="chat-input-container">
             <div class="chat-input-wrapper">
-                <textarea class="chat-input" id="userInput" placeholder="输入消息..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+                <textarea class="chat-input" id="userInput" placeholder="输入消息 (任务模式下将触发自动化流程)..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
                 <button class="send-btn" id="sendBtn" onclick="sendMessage()">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                     </svg>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="task-sidebar">
+        <div class="task-header">
+            <span id="sidebarTitle">任务看板</span>
+            <button onclick="refreshCurrentTab()" style="background: none; border: none; cursor: pointer; font-size: 16px;">🔄</button>
+        </div>
+        <!-- C-2: Tab 导航 -->
+        <div class="tab-nav">
+            <button class="tab-btn active" id="tab-tasks" onclick="switchTab('tasks')">📋 任务</button>
+            <button class="tab-btn" id="tab-research" onclick="switchTab('research')">🔬 研究</button>
+            <button class="tab-btn" id="tab-code" onclick="switchTab('code')">💻 代码</button>
+        </div>
+        <!-- 任务面板 -->
+        <div class="tab-panel active" id="panel-tasks">
+            <div class="task-list" id="taskList">
+                <div style="text-align: center; color: var(--text-secondary); padding-top: 20px;">暂无进行中的任务</div>
+            </div>
+        </div>
+        <!-- 研究面板 -->
+        <div class="tab-panel" id="panel-research">
+            <div class="panel-action-bar">
+                <button onclick="showNewResearchForm()">＋ 新建研究</button>
+                <button onclick="refreshResearch()" style="flex:0;padding:5px 8px;background:#6c757d;">🔄</button>
+            </div>
+            <div id="researchList"><div style="text-align:center;color:var(--text-secondary);padding-top:20px;">暂无研究任务</div></div>
+        </div>
+        <!-- 代码面板 -->
+        <div class="tab-panel" id="panel-code">
+            <div class="panel-action-bar">
+                <button onclick="showNewCodeForm()">＋ 新建代码任务</button>
+                <button onclick="refreshCode()" style="flex:0;padding:5px 8px;background:#6c757d;">🔄</button>
+            </div>
+            <div id="codeList"><div style="text-align:center;color:var(--text-secondary);padding-top:20px;">暂无代码任务</div></div>
+        </div>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal-overlay" id="infoModal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <span id="modalTitle">标题</span>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                加载中...
             </div>
         </div>
     </div>
@@ -342,6 +603,158 @@
         const modelSelect = document.getElementById('modelSelect');
         const historyList = document.getElementById('historyList');
         const chatTitle = document.getElementById('chatTitle');
+        const taskList = document.getElementById('taskList');
+        const intentionBadge = document.getElementById('intentionBadge');
+
+        let isIntentionMode = false;
+
+        // 模态框逻辑
+        async function openModal(type) {
+            const modal = document.getElementById('infoModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+            
+            modal.style.display = 'flex';
+            body.innerHTML = '加载中...';
+
+            try {
+                if (type === 'knowledge') {
+                    title.textContent = '📚 知识库 (Markdown 文档)';
+                    const res = await fetch('/api/v1/knowledge');
+                    const data = await res.json();
+                    body.innerHTML = `<ul>${data.knowledge_files.map(f => `<li>${f}</li>`).join('')}</ul><p style="margin-top:10px;color:gray;">(这些文件存储在项目根目录，作为 RAG 的基础知识)</p>`;
+                } else if (type === 'skills') {
+                    title.textContent = '🛠️ 技能库 (SQLite & ChromaDB)';
+                    const res = await fetch('/api/v1/skills');
+                    const data = await res.json();
+                    if (data.skills && data.skills.length > 0) {
+                        body.innerHTML = data.skills.map(s => `
+                            <div style="border:1px solid #eee; padding:10px; margin-bottom:10px; border-radius:6px;">
+                                <strong>${s.name}</strong> (${s.language})<br>
+                                <span style="color:gray;font-size:12px;">ID: ${s.id} | Entry: ${s.entrypoint}</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        body.innerHTML = '暂无注册的技能。';
+                    }
+                } else if (type === 'errors') {
+                    title.textContent = '📓 错题集 (error_ledger.md)';
+                    const res = await fetch('/api/v1/errors');
+                    const data = await res.json();
+                    // 简单转义 HTML 标签并保留换行
+                    const safeContent = data.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    body.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${safeContent}</pre>`;
+                }
+            } catch (e) {
+                body.innerHTML = `<span style="color:red">加载失败: ${e.message}</span>`;
+            }
+        }
+
+        function closeModal(e) {
+            document.getElementById('infoModal').style.display = 'none';
+        }
+
+        function toggleIntentionMode() {
+            isIntentionMode = !isIntentionMode;
+            intentionBadge.style.display = isIntentionMode ? 'inline-block' : 'none';
+            const btn = document.getElementById('intentionToggleBtn');
+            btn.textContent = isIntentionMode ? '返回对话模式' : '开启任务模式';
+            userInput.placeholder = isIntentionMode ? '描述你想要自动化完成的任务...' : '输入消息...';
+        }
+
+        // 从后端动态加载可用模型列表
+        async function loadModels() {
+            try {
+                const r = await fetch('/api/v1/models');
+                const data = await r.json();
+                const sel = document.getElementById('modelSelect');
+                sel.innerHTML = '';
+                const providers = { volcengine: '🌋 火山引擎', gemini: '✨ Gemini' };
+                for (const [provider, models] of Object.entries(data.available_models || {})) {
+                    const grp = document.createElement('optgroup');
+                    grp.label = providers[provider] || provider;
+                    for (const m of models) {
+                        const opt = document.createElement('option');
+                        opt.value = m;
+                        opt.textContent = m;
+                        if (m === data.default_model) opt.selected = true;
+                        grp.appendChild(opt);
+                    }
+                    sel.appendChild(grp);
+                }
+            } catch(e) {
+                console.warn('Failed to load models:', e);
+            }
+        }
+
+        // 任务结果轮询：收到 task_ids 后等待全部完成，在对话中回显结果
+        async function pollUntilDone(taskIds, summaryMsgId) {
+            const MAX_POLLS = 120; // 最多轮询 4 分钟
+            let polls = 0;
+            while (polls++ < MAX_POLLS) {
+                await new Promise(r => setTimeout(r, 2000));
+                try {
+                    const res = await fetch('/api/v1/tasks');
+                    const allTasks = await res.json();
+                    const mine = allTasks.filter(t => taskIds.includes(t.id));
+                    const pending = mine.filter(t => t.status === 'pending' || t.status === 'running');
+                    const failed  = mine.filter(t => t.status === 'failed');
+                    const done    = mine.filter(t => t.status === 'completed');
+                    // 更新右侧面板
+                    refreshTasks();
+                    // 更新占位消息
+                    const msgEl = document.getElementById(summaryMsgId);
+                    if (!msgEl) return;
+                    if (pending.length === 0) {
+                        // 全部结束
+                        let html = `<b>✅ 任务已全部完成（${done.length}/${mine.length} 成功）</b><br><br>`;
+                        for (const t of mine) {
+                            const icon = t.status === 'completed' ? '✅' : '❌';
+                            const preview = t.status === 'completed' && t.result
+                                ? (typeof t.result === 'string' ? t.result : JSON.stringify(t.result, null, 2)).slice(0, 300)
+                                : (t.error_msg || '无输出');
+                            html += `<details><summary>${icon} ${t.description.slice(0, 60)}</summary><pre style="white-space:pre-wrap;font-size:12px;margin:4px 0;">${preview.replace(/</g,'&lt;')}</pre></details>`;
+                        }
+                        if (failed.length > 0) html += `<br>⚠️ ${failed.length} 个任务失败，详见右侧面板。`;
+                        msgEl.innerHTML = html;
+                        return;
+                    } else {
+                        msgEl.innerHTML = `⏳ 任务进行中…（${done.length + failed.length}/${mine.length} 已完成）`;
+                    }
+                } catch(e) { /* ignore */ }
+            }
+            // 超时
+            const msgEl = document.getElementById(summaryMsgId);
+            if (msgEl) msgEl.innerHTML = '⚠️ 等待超时，请前往右侧面板查看进度。';
+        }
+
+        // 任务状态检查逻辑
+        async function refreshTasks() {
+            try {
+                const response = await fetch('/api/v1/tasks');
+                const tasks = await response.json();
+                
+                if (tasks.length === 0) {
+                    taskList.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding-top: 20px;">暂无任务记录</div>';
+                    return;
+                }
+
+                // 按创建时间倒序（如果有的话，这里简单倒序）
+                taskList.innerHTML = tasks.reverse().map(task => `
+                    <div class="task-item">
+                        <span class="task-status-tag tag-${task.status}">${task.status}</span>
+                        <span class="task-desc">${task.description}</span>
+                        <div class="task-meta">
+                            ID: ${task.id.slice(0, 8)}...<br>
+                            ${task.error_msg ? `<span style="color:red">Error: ${task.error_msg}</span>` : ''}
+                            ${task.result ? `<span style="color:green">Result: ${JSON.stringify(task.result).slice(0, 50)}...</span>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("Failed to fetch tasks:", err);
+            }
+        }
 
         // 代理状态更新逻辑
         async function updateProxyUI() {
@@ -357,32 +770,223 @@
 
                 if (data.status === 'ok') {
                     dot.className = 'status-dot online';
-                    text.innerText = '代理已就绪';
-                    latency.innerText = `${data.latency}ms`;
+                    text.innerText = data.node ? `代理就绪 (${data.node})` : '代理就绪';
+                    latency.innerText = data.latency ? `${data.latency}ms` : '就绪';
                     card.classList.remove('error');
+                    card.classList.remove('initializing');
                 } else if (data.status === 'timeout') {
                     dot.className = 'status-dot offline';
                     text.innerText = '代理超时';
                     latency.innerText = 'TimeOut';
                     card.classList.add('error');
+                    card.classList.remove('initializing');
+                } else if (data.status === 'initializing') {
+                    dot.className = 'status-dot warning';
+                    text.innerText = '正在载入配置...';
+                    latency.innerText = '--ms';
+                    card.classList.remove('error');
+                    card.classList.add('initializing');
                 } else {
                     dot.className = 'status-dot offline';
                     text.innerText = '代理异常';
                     card.classList.add('error');
+                    card.classList.remove('initializing');
                 }
             } catch (err) {
                 console.error("Failed to check proxy status:", err);
             }
         }
 
-        // 初始化加载时和每 30 秒检查一次
-        setInterval(updateProxyUI, 30000);
+        // 定时刷新
+        setInterval(updateProxyUI, 10000);
+        setInterval(refreshTasks, 5000);
+        setInterval(refreshResearch, 30000);
+        setInterval(refreshCode, 30000);
+
+        // ── C-2: Tab 切换 ──────────────────────────────────────────
+        let _currentTab = 'tasks';
+
+        function switchTab(tab) {
+            _currentTab = tab;
+            ['tasks', 'research', 'code'].forEach(t => {
+                document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+                document.getElementById('panel-' + t).classList.toggle('active', t === tab);
+            });
+            const titles = { tasks: '任务看板', research: '研究看板', code: '代码任务' };
+            document.getElementById('sidebarTitle').textContent = titles[tab] || '';
+        }
+
+        function refreshCurrentTab() {
+            if (_currentTab === 'tasks') refreshTasks();
+            else if (_currentTab === 'research') refreshResearch();
+            else refreshCode();
+        }
+
+        // ── C-2: 研究面板 ──────────────────────────────────────────
+        async function refreshResearch() {
+            try {
+                const res = await fetch('/api/v1/research');
+                if (!res.ok) { renderResearchList([]); return; }
+                const data = await res.json();
+                renderResearchList(data.tasks || []);
+            } catch { renderResearchList([]); }
+        }
+
+        function renderResearchList(tasks) {
+            const el = document.getElementById('researchList');
+            if (!tasks.length) {
+                el.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding-top:20px;">暂无研究任务</div>';
+                return;
+            }
+            el.innerHTML = tasks.map(t => `
+                <div class="research-card" onclick="openResearchDetail('${t.task_id}')">
+                    <div class="rc-title" title="${t.query || ''}">${t.query || t.task_id}</div>
+                    <div class="rc-meta">
+                        <span class="rc-status ${t.status}">${statusLabel(t.status)}</span>
+                        &nbsp;${t.created_at ? new Date(t.created_at * 1000).toLocaleTimeString() : ''}
+                    </div>
+                </div>`).join('');
+        }
+
+        async function openResearchDetail(taskId) {
+            const modal = document.getElementById('infoModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+            modal.style.display = 'flex';
+            title.textContent = '🔬 研究任务详情';
+            body.innerHTML = '加载中...';
+            try {
+                const res = await fetch(`/api/v1/research/${taskId}`);
+                const data = await res.json();
+                const report = (data.report || data.final_report || '暂无报告').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                body.innerHTML = `<p><strong>查询：</strong>${data.query || taskId}</p>
+                    <p><strong>状态：</strong><span class="rc-status ${data.status}">${statusLabel(data.status)}</span></p>
+                    ${data.report ? `<details open><summary>报告内容</summary><pre style="white-space:pre-wrap;margin-top:6px;font-size:12px;">${report}</pre></details>` : ''}`;
+            } catch(e) { body.innerHTML = `加载失败: ${e.message}`; }
+        }
+
+        function showNewResearchForm() {
+            const modal = document.getElementById('infoModal');
+            document.getElementById('modalTitle').textContent = '🔬 新建深度研究';
+            document.getElementById('modalBody').innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <label>研究主题 / 问题</label>
+                    <textarea id="researchQuery" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="例如：如何优化 Python 异步 IO 性能..."></textarea>
+                    <button onclick="submitResearch()" style="padding:8px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;">🚀 启动研究</button>
+                </div>`;
+            modal.style.display = 'flex';
+        }
+
+        async function submitResearch() {
+            const query = document.getElementById('researchQuery').value.trim();
+            if (!query) return;
+            try {
+                const res = await fetch('/api/v1/research/deep', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, max_rounds: 6 })
+                });
+
+                const data = await res.json();
+                closeModal();
+                switchTab('research');
+                refreshResearch();
+                alert(`✅ 研究任务已启动\nTask ID: ${(data.task_id || '').slice(0,12)}...`);
+            } catch(e) { alert('启动失败: ' + e.message); }
+        }
+
+        // ── C-2: 代码面板 ──────────────────────────────────────────
+        async function refreshCode() {
+            try {
+                const res = await fetch('/api/v1/code');
+                if (!res.ok) { renderCodeList([]); return; }
+                const data = await res.json();
+                renderCodeList(data.tasks || []);
+            } catch { renderCodeList([]); }
+        }
+
+        function renderCodeList(tasks) {
+            const el = document.getElementById('codeList');
+            if (!tasks.length) {
+                el.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding-top:20px;">暂无代码任务</div>';
+                return;
+            }
+            el.innerHTML = tasks.map(t => `
+                <div class="code-card" onclick="openCodeDetail('${t.task_id}')">
+                    <div class="rc-title" title="${t.query || ''}">${t.query || t.task_id}</div>
+                    <div class="rc-meta">
+                        <span class="rc-status ${t.status}">${statusLabel(t.status)}</span>
+                        &nbsp;${t.created_at ? new Date(t.created_at * 1000).toLocaleTimeString() : ''}
+                    </div>
+                </div>`).join('');
+        }
+
+        async function openCodeDetail(taskId) {
+            const modal = document.getElementById('infoModal');
+            document.getElementById('modalTitle').textContent = '💻 代码任务详情';
+            document.getElementById('modalBody').innerHTML = '加载中...';
+            modal.style.display = 'flex';
+            try {
+                const res = await fetch(`/api/v1/code/${taskId}`);
+
+                const data = await res.json();
+                const code = (data.code || data.result || '暂无输出').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                document.getElementById('modalBody').innerHTML = `
+                    <p><strong>任务：</strong>${data.query || taskId}</p>
+                    <p><strong>状态：</strong><span class="rc-status ${data.status}">${statusLabel(data.status)}</span></p>
+                    ${data.code ? `<details open><summary>代码输出</summary><pre style="white-space:pre-wrap;margin-top:6px;font-size:12px;">${code}</pre></details>` : ''}`;
+            } catch(e) { document.getElementById('modalBody').innerHTML = `加载失败: ${e.message}`; }
+        }
+
+        function showNewCodeForm() {
+            const modal = document.getElementById('infoModal');
+            document.getElementById('modalTitle').textContent = '💻 新建代码生成任务';
+            document.getElementById('modalBody').innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <label>代码需求描述</label>
+                    <textarea id="codeQuery" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="例如：生成一个 FastAPI CRUD 接口，支持分页查询..."></textarea>
+                    <label>目标语言</label>
+                    <select id="codeLang" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="python">Python</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="bash">Bash</option>
+                    </select>
+                    <button onclick="submitCode()" style="padding:8px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;">🚀 生成代码</button>
+                </div>`;
+            modal.style.display = 'flex';
+        }
+
+        async function submitCode() {
+            const query = document.getElementById('codeQuery').value.trim();
+            const lang = document.getElementById('codeLang').value;
+            if (!query) return;
+            try {
+                const res = await fetch('/api/v1/code/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, language: lang })
+                });
+                const data = await res.json();
+                closeModal();
+                switchTab('code');
+                refreshCode();
+                alert(`✅ 代码任务已启动\nTask ID: ${(data.task_id || '').slice(0,12)}...`);
+            } catch(e) { alert('启动失败: ' + e.message); }
+        }
+
+        // 状态标签辅助
+        function statusLabel(s) {
+            const m = { running: '运行中', completed: '已完成', failed: '失败', pending: '等待中' };
+            return m[s] || s || '未知';
+        }
 
         let currentChatId = null;
         let chats = {}; // 存储所有对话 { id: { title: string, messages: [] } }
 
         // 页面加载时尝试从 localStorage 恢复历史记录
         window.onload = () => {
+            loadModels();
             updateProxyUI();
             const savedChats = localStorage.getItem('wateryChats');
             if (savedChats) {
@@ -486,13 +1090,33 @@
         }
 
         function appendMessage(role, content) {
+            appendMessageWithTools(role, content, null);
+        }
+
+        // C-1: 支持工具调用卡片的消息渲染
+        function appendMessageWithTools(role, content, toolResults) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role}`;
-            
-            // 简单的换行处理
-            const formattedContent = content.replace(/\n/g, '<br>');
-            msgDiv.innerHTML = formattedContent;
-            
+
+            let html = '';
+            // 工具调用卡片
+            if (toolResults && toolResults.length > 0) {
+                for (const tr of toolResults) {
+                    const ok = tr.result && tr.result.status === 'success';
+                    const resultText = JSON.stringify(
+                        tr.result?.result ?? tr.result?.message ?? tr.result ?? ''
+                    ).slice(0, 150);
+                    html += `<div class="tool-call-card ${ok ? '' : 'error'}">
+                        <div class="tool-call-header">${ok ? '🔧' : '❌'} 工具调用: ${tr.tool_name || tr.tool_call_id || '?'}</div>
+                        <div class="tool-call-result">→ ${resultText}</div>
+                    </div>`;
+                }
+            }
+            // 正文（换行处理）
+            if (content) {
+                html += content.replace(/\n/g, '<br>');
+            }
+            msgDiv.innerHTML = html;
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
@@ -527,20 +1151,26 @@
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'message assistant';
             loadingDiv.id = loadingId;
-            loadingDiv.textContent = '思考中...';
+            loadingDiv.textContent = isIntentionMode ? '正在拆解并分发任务...' : '思考中...';
             chatMessages.appendChild(loadingDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
             try {
-                const response = await fetch('/api/v1/chat', {
+                // 根据模式选择接口
+                const endpoint = isIntentionMode ? '/api/v1/intention' : '/api/v1/chat';
+                const body = isIntentionMode 
+                    ? JSON.stringify({ intention: text })
+                    : JSON.stringify({
+                        messages: chats[currentChatId].messages,
+                        model: modelSelect.value
+                    });
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        messages: chats[currentChatId].messages,
-                        model: modelSelect.value
-                    })
+                    body: body
                 });
 
                 const data = await response.json();
@@ -549,14 +1179,41 @@
                 document.getElementById(loadingId).remove();
 
                 if (response.ok) {
-                    appendMessage('assistant', data.content);
-                    chats[currentChatId].messages.push({ role: 'assistant', content: data.content });
-                    saveChats();
+                    let content;
+                    if (isIntentionMode) {
+                        if (data.status === 'success' && data.task_ids && data.task_ids.length > 0) {
+                            const taskCount = data.task_ids.length;
+                            const summaryId = 'task-summary-' + Date.now();
+                            // 插入一个占位节点作为结果容器
+                            const container = document.createElement('div');
+                            container.className = 'message assistant';
+                            container.id = summaryId;
+                            container.textContent = `⏳ 已分配 ${taskCount} 个子任务，等待执行中...`;
+                            chatMessages.appendChild(container);
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                            // 开始后台轮询
+                            pollUntilDone(data.task_ids, summaryId);
+                            chats[currentChatId].messages.push({ role: 'assistant', content: `[任务已分配: ${taskCount} 个子任务]` });
+                            saveChats();
+                            refreshTasks();
+                        } else {
+                            content = `✅ 任务已发送。${data.message || ''}`;
+                            appendMessage('assistant', content);
+                            chats[currentChatId].messages.push({ role: 'assistant', content: content });
+                            saveChats();
+                        }
+                    } else {
+                        const toolResults = data.tool_results || null;
+                        appendMessageWithTools('assistant', data.content, toolResults);
+                        chats[currentChatId].messages.push({ role: 'assistant', content: data.content });
+                        saveChats();
+                    }
                 } else {
                     appendMessage('assistant', `❌ 错误: ${data.detail || '请求失败'}`);
                 }
             } catch (error) {
-                document.getElementById(loadingId).remove();
+                const loader = document.getElementById(loadingId);
+                if (loader) loader.remove();
                 appendMessage('assistant', `❌ 网络错误: ${error.message}`);
             } finally {
                 // 恢复输入
