@@ -80,11 +80,14 @@ class MemoryRetriever:
         correction: str,
         skill_id: Optional[str] = None,
     ) -> None:
-        """将一条错误经历写入 Error Ledger 向量库。"""
+        """将一条错误经历写入 Error Ledger 向量库（旧接口，向后兼容）。"""
         doc_id = str(uuid.uuid4())
         meta = {
             "correction": correction,
             "skill_id": skill_id or "general",
+            "tags": "",
+            "severity": "warning",
+            "entry_id": doc_id,
         }
         await self._run_sync(
             self.error_ledger_col.add,
@@ -93,6 +96,111 @@ class MemoryRetriever:
             metadatas=[meta],
         )
         logger.info(f"Error entry {doc_id} added to ledger.")
+
+    async def add_error_entry_v2(
+        self,
+        entry_id: str,
+        context: str,
+        correction: str,
+        tags: List[str],
+        severity: str = "warning",
+    ) -> None:
+        """
+        将错题写入 ChromaDB error_ledger_vector（带 tags metadata，Phase 8）。
+        tags 存为逗号分隔字符串供 ChromaDB where 过滤使用。
+        """
+        doc_text = f"{context}\nCorrection: {correction}"
+        meta = {
+            "correction": correction,
+            "tags": ",".join(tags) if tags else "",
+            "severity": severity,
+            "entry_id": entry_id,
+        }
+        existing = await self._run_sync(self.error_ledger_col.get, ids=[entry_id])
+        if existing["ids"]:
+            await self._run_sync(
+                self.error_ledger_col.update,
+                ids=[entry_id],
+                documents=[doc_text],
+                metadatas=[meta],
+            )
+        else:
+            await self._run_sync(
+                self.error_ledger_col.add,
+                ids=[entry_id],
+                documents=[doc_text],
+                metadatas=[meta],
+            )
+        logger.info(f"Error entry v2 {entry_id} synced to ChromaDB (tags={tags}).")
+
+    async def delete_error_entry(self, entry_id: str) -> None:
+        """从 ChromaDB 删除错题条目。"""
+        try:
+            await self._run_sync(self.error_ledger_col.delete, ids=[entry_id])
+            logger.info(f"Error entry {entry_id} deleted from ChromaDB.")
+        except Exception as e:
+            logger.warning(f"delete_error_entry: {e}")
+
+    async def retrieve_errors_by_tags(
+        self,
+        task_description: str,
+        tags: List[str],
+        top_k: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """
+        按标签精确筛选 + 语义排序，返回最相关的错题列表（Phase 8）。
+
+        流程：
+          1. 用 ChromaDB where 过滤：tags 字段包含指定标签（OR 逻辑）
+          2. 在候选集内做语义相似度排序
+          3. 返回 top_k 条
+
+        Returns:
+            [{"entry_id": ..., "context": ..., "correction": ..., "tags": [...]}, ...]
+        """
+        error_count = await self._run_sync(self.error_ledger_col.count)
+        if error_count == 0:
+            return []
+
+        k = min(top_k, error_count)
+
+        # 构建 where 过滤：tags 逗号字符串包含任一指定标签
+        where_filter: Optional[Dict] = None
+        if tags:
+            if len(tags) == 1:
+                where_filter = {"tags": {"$contains": tags[0]}}
+            else:
+                where_filter = {"$or": [{"tags": {"$contains": t}} for t in tags]}
+
+        try:
+            results = await self._run_sync(
+                self.error_ledger_col.query,
+                query_texts=[task_description],
+                n_results=k,
+                where=where_filter,
+                include=["documents", "metadatas"],
+            )
+        except Exception as e:
+            logger.warning(f"retrieve_errors_by_tags filtered query failed ({e}), falling back to unfiltered")
+            results = await self._run_sync(
+                self.error_ledger_col.query,
+                query_texts=[task_description],
+                n_results=k,
+                include=["documents", "metadatas"],
+            )
+
+        entries = []
+        if results["ids"] and results["ids"][0]:
+            for i, doc_id in enumerate(results["ids"][0]):
+                meta = results["metadatas"][0][i] if results["metadatas"] else {}
+                raw_tags = meta.get("tags", "")
+                entries.append({
+                    "entry_id": meta.get("entry_id", doc_id),
+                    "context": (results["documents"][0][i] if results["documents"] else ""),
+                    "correction": meta.get("correction", ""),
+                    "tags": [t for t in raw_tags.split(",") if t] if raw_tags else [],
+                })
+        return entries
 
     # ------------------------------------------------------------------ #
     # Context Retrieval（上下文检索）

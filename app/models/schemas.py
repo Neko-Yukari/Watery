@@ -34,16 +34,26 @@ class Message(BaseModel):
     Tool Calling 消息说明：
     - assistant 发起调用时：tool_calls 非空，content 可能为 null
     - tool 角色回传时：tool_call_id 必填，content 为执行结果 JSON 字符串
+
+    多模态消息支持（Phase 9 C-4）：
+    - content 可以是 str（文本）或 List[dict]（多模态，含 text 和 image_url 元素）
     """
     role: str = Field(..., description="角色：system / user / assistant / tool")
-    content: Optional[str] = Field(None, description="消息内容（tool calling 时 assistant content 可能为 null）")
+    content: Optional[Any] = Field(None, description="消息内容。纯文本时为 str；多模态时为 List[dict]（含 text/image_url 元素）")
     # 以下字段仅在 Tool Calling 模式下使用，前端普通对话无需传递
     tool_calls: Optional[List[ToolCall]] = Field(None, description="assistant 消息发起的工具调用列表")
     tool_call_id: Optional[str] = Field(None, description="role=tool 消息需关联的工具调用 ID")
 
 
 class ChatRequest(BaseModel):
-    messages: List[Message]
+    messages: Optional[List[Message]] = Field(
+        None,
+        description="消息列表（旧模式：与 conversation_id 二选一；不传 conversation_id 时必填）",
+    )
+    conversation_id: Optional[str] = Field(
+        None,
+        description="会话 ID（新模式：后端自动从 DB 加载历史消息并追加结果；与 messages 二选一）",
+    )
     model: str = Field("ark-code-latest", description="指定使用的模型名称，默认使用火山引擎自动化模型 ark-code-latest")
     temperature: Optional[float] = Field(0.7, description="生成温度")
     max_tokens: Optional[int] = Field(2048, description="最大生成 token 数")
@@ -65,6 +75,8 @@ class ChatResponse(BaseModel):
     tool_calls: Optional[List[ToolCall]] = Field(None, description="LLM 本轮决定调用的工具列表")
     tool_results: Optional[List[Dict[str, Any]]] = Field(None, description="本次对话所有工具执行结果（供前端展示）")
     finish_reason: Optional[str] = Field(None, description="完成原因：stop / tool_calls / length")
+    # Phase 7 — 会话持久化
+    conversation_id: Optional[str] = Field(None, description="关联的会话 ID（conversation_id 模式下填充，供前端更新侧边栏）")
 
 class SkillManifest(BaseModel):
     """(Legacy) 保留向后兼容"""
@@ -99,6 +111,11 @@ class SkillCreate(BaseModel):
     knowledge_content: Optional[str] = Field(
         None,
         description="文档型技能内容（skill_type=knowledge 时使用，Worker 将其注入 LLM 上下文）",
+    )
+    # Phase 8 — 标签化错题集关联
+    error_tags: List[str] = Field(
+        default_factory=list,
+        description="该技能关联的错题标签列表（不填时 AI 自动推断）",
     )
 
 class ErrorLog(BaseModel):
@@ -194,6 +211,8 @@ class SkillUpdate(BaseModel):
     # Phase 6 B-3 文档型技能
     skill_type: Optional[str] = None
     knowledge_content: Optional[str] = None
+    # Phase 8 — 标签化错题集关联
+    error_tags: Optional[List[str]] = None
 
 
 # ============================================================
@@ -261,3 +280,146 @@ class MSAgentTaskListItem(BaseModel):
     task_id: str
     status: str
     task_type: Optional[str] = None
+
+
+# ============================================================
+# Phase 7 — 对话 Session 持久化
+# ============================================================
+
+class ConversationCreate(BaseModel):
+    """POST /conversations 请求体。"""
+    title: Optional[str] = Field("新对话", description="会话标题（可选，后续会根据第一条消息自动更新）")
+    model: str = Field("ark-code-latest", description="该会话使用的模型")
+    system_prompt: Optional[str] = Field(
+        None,
+        description="可选的 system prompt，创建时自动插入为第一条 role=system 消息",
+    )
+
+
+class ConversationInfo(BaseModel):
+    """会话摘要（列表页使用）。"""
+    id: str
+    title: str
+    model: str
+    message_count: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    is_archived: bool = False
+
+
+class ConversationDetail(BaseModel):
+    """会话详情（含完整消息列表，GET /conversations/{id} 使用）。"""
+    id: str
+    title: str
+    model: str
+    message_count: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    messages: List[Message] = Field(default_factory=list)
+
+
+class ConversationUpdate(BaseModel):
+    """PATCH /conversations/{id} 请求体，仅更新提供的字段。"""
+    title: Optional[str] = None
+    model: Optional[str] = None
+    is_archived: Optional[bool] = None
+
+
+class ImportMessagesRequest(BaseModel):
+    """POST /conversations/{id}/import 请求体（localStorage 迁移用）。"""
+    messages: List[Message] = Field(
+        ...,
+        description="要批量导入的消息列表（role/content 格式）",
+    )
+
+
+# ============================================================
+# Phase 8 — 标签化错题集
+# ============================================================
+
+class ErrorEntryCreate(BaseModel):
+    """创建错题条目请求体（手动添加或 AI 自动生成）。"""
+    title: str = Field(..., description="简短标题")
+    context: str = Field(..., description="错误上下文")
+    correction: str = Field(..., description="纠正方案")
+    prevention: str = Field("", description="预防建议")
+    tags: List[str] = Field(default_factory=list, description="标签数组")
+    severity: str = Field("warning", description="critical / warning / info")
+    source: str = Field("manual", description="manual / auto / task_failure")
+    related_skill_ids: List[str] = Field(default_factory=list, description="关联 Skill ID")
+
+
+class ErrorEntryInfo(BaseModel):
+    """错题摘要（列表页使用）。"""
+    id: str
+    title: str
+    tags: List[str] = []
+    severity: str = "warning"
+    source: str = "manual"
+    hit_count: int = 0
+    created_at: Optional[str] = None
+
+
+class ErrorEntryDetail(BaseModel):
+    """错题完整详情。"""
+    id: str
+    title: str
+    context: str
+    correction: str
+    prevention: str = ""
+    tags: List[str] = []
+    severity: str = "warning"
+    source: str = "manual"
+    related_skill_ids: List[str] = []
+    hit_count: int = 0
+    created_at: Optional[str] = None
+
+
+# ============================================================
+# Phase 11 — 代码语义索引
+# ============================================================
+
+class CodeSymbolResponse(BaseModel):
+    """代码符号查询结果（单条）。"""
+    file_path: str
+    symbol_name: str
+    symbol_type: str
+    line_start: int
+    line_end: int
+    signature: str
+    docstring: str
+    decorators: List[str] = []
+    parent_symbol: Optional[str] = None
+    relevance_score: float = Field(0.0, description="语义搜索相关度（0-1，越高越相关）")
+
+
+class CodeSearchRequest(BaseModel):
+    """代码语义搜索请求。"""
+    query: str = Field(
+        ...,
+        description="搜索查询（自然语言），如 '处理 PDF 上传的函数'",
+    )
+    top_k: int = Field(default=5, ge=1, le=20, description="返回最相关的前 K 条结果")
+    symbol_types: Optional[List[str]] = Field(
+        default=None,
+        description="过滤符号类型，如 ['function', 'method']，不传则不过滤",
+    )
+    file_pattern: Optional[str] = Field(
+        default=None,
+        description="文件路径前缀过滤，如 'app/services/' 只搜索 services 目录",
+    )
+
+
+class CodeSearchResponse(BaseModel):
+    """代码语义搜索响应。"""
+    results: List[CodeSymbolResponse]
+    total_indexed: int = Field(description="索引中的总符号数")
+    query: str
+
+
+class IndexStatusResponse(BaseModel):
+    """索引状态响应。"""
+    total_files: int
+    total_symbols: int
+    last_indexed_at: Optional[str] = None
+    stale_files: int = Field(default=0, description="文件已变更但索引未更新的文件数")

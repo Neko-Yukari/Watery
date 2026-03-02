@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     proxy_region_filter: str = "美国|US"          # 节点过滤关键词（正则）
     clash_config_path: str = "/app/data/clash/config.yaml"
 
+    # Feishu (Lark) Webhook Config
+    feishu_webhook_url: Optional[str] = None      # 飞书自定义机器人 Webhook URL
+    feishu_webhook_secret: Optional[str] = None   # 飞书签名校验密钥（可选）
+
     @property
     def sqlite_db_path(self) -> str:
         db_file = os.path.join(self.data_dir, self.sqlite_db_name)

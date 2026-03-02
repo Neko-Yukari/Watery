@@ -1,0 +1,28 @@
+# Python 缓存 —— 频繁变化，加入会触发 COPY . . 层缓存失效
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+
+# 开发工具
+.git
+.gitignore
+.env
+*.code-workspace
+.vscode
+
+# 数据与输出（运行时通过 volume 挂载，不需要打入镜像）
+data/
+data/vector_db/
+data/pdfs/
+data/outputs/
+data/clash/
+
+# 文档与日志
+*.md
+需求文档/
+
+# 测试
+tests/
+.pytest_cache/

@@ -385,6 +385,74 @@
             cursor: not-allowed;
         }
 
+        /* ── 附件上传 UI ─────────────────────────────────────────── */
+        .attach-btn {
+            width: 42px;
+            height: 54px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #aaa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            flex-shrink: 0;
+            transition: color 0.2s;
+        }
+        .attach-btn:hover { color: var(--primary-color); }
+
+        .attachment-preview-area {
+            max-width: 800px;
+            margin: 0 auto 8px;
+            display: none;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 4px 0;
+        }
+
+        .attachment-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px 4px 6px;
+            border-radius: 16px;
+            border: 1px solid #dde2ea;
+            background: #f5f7fa;
+            font-size: 12px;
+            max-width: 230px;
+        }
+        .attachment-chip img {
+            width: 36px;
+            height: 36px;
+            object-fit: cover;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+        .attachment-chip .chip-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 120px;
+            color: #333;
+        }
+        .attachment-chip .chip-meta {
+            color: #999;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+        .attachment-chip .chip-remove {
+            cursor: pointer;
+            color: #bbb;
+            font-size: 16px;
+            line-height: 1;
+            background: none;
+            border: none;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .attachment-chip .chip-remove:hover { color: #ff4d4f; }
+
         /* Markdown 样式简易支持 */
         .message pre {
             background-color: #2d2d2d;
@@ -508,7 +576,7 @@
             <div class="nav-item" onclick="openModal('knowledge')">📚 知识库</div>
             <div class="nav-item" onclick="openModal('skills')">🛠️ 技能库</div>
             <div class="nav-item" onclick="openModal('errors')">📓 错题集</div>
-            <div class="nav-item">⚙️ 设置</div>
+            <div class="nav-item" onclick="openModal('settings')">⚙️ 设置</div>
         </div>
 
         <div class="model-selector">
@@ -536,8 +604,20 @@
         </div>
 
         <div class="chat-input-container">
+            <!-- 附件预览区 -->
+            <div id="attachmentPreviewArea" class="attachment-preview-area"></div>
+            <!-- 输入行 -->
             <div class="chat-input-wrapper">
-                <textarea class="chat-input" id="userInput" placeholder="输入消息 (任务模式下将触发自动化流程)..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+                <!-- 隐藏文件选择器（支持图片/PDF/文档/纯文本） -->
+                <input type="file" id="fileAttachInput" multiple
+                    accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.txt,.md"
+                    style="display:none" onchange="handleFileAttach(event)">
+                <button class="attach-btn" onclick="document.getElementById('fileAttachInput').click()" title="上传图片或文件">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                </button>
+                <textarea class="chat-input" id="userInput" placeholder="输入消息，可附加图片/PDF/文档..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
                 <button class="send-btn" id="sendBtn" onclick="sendMessage()">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -638,12 +718,65 @@
                         body.innerHTML = '暂无注册的技能。';
                     }
                 } else if (type === 'errors') {
-                    title.textContent = '📓 错题集 (error_ledger.md)';
-                    const res = await fetch('/api/v1/errors');
+                    title.textContent = '📓 错题集';
+                    selectedErrorTags.clear();
+                    body.innerHTML = `
+                        <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
+                            <input type="text" id="errorSearch" placeholder="搜索关键词..."
+                                style="flex:1;min-width:180px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;"
+                                oninput="searchErrors()">
+                            <select id="errorSeverityFilter" onchange="searchErrors()"
+                                style="padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                                <option value="">全部严重程度</option>
+                                <option value="critical">🔴 Critical</option>
+                                <option value="warning">🟡 Warning</option>
+                                <option value="info">🔵 Info</option>
+                            </select>
+                        </div>
+                        <div id="errorTagCloud" style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;min-height:28px;"></div>
+                        <div id="errorList" style="max-height:62vh;overflow-y:auto;">加载中...</div>
+                    `;
+                    loadErrorTags();
+                    searchErrors();
+                } else if (type === 'settings') {
+                    title.textContent = '⚙️ 系统设置';
+                    const res = await fetch('/api/v1/settings');
                     const data = await res.json();
-                    // 简单转义 HTML 标签并保留换行
-                    const safeContent = data.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    body.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${safeContent}</pre>`;
+                    const settings = data.settings || {};
+                    let html = '';
+                    for (const [key, info] of Object.entries(settings)) {
+                        html += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">`;
+                        html += `<div style="font-weight: bold; margin-bottom: 4px;">${info.description}</div>`;
+                        html += `<div style="color: gray; font-size: 12px; margin-bottom: 8px;">key: ${key}</div>`;
+                        if (info.options && info.options.length > 0) {
+                            html += `<select id="setting_${key}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">`;
+                            for (const opt of info.options) {
+                                const selected = opt === info.value ? 'selected' : '';
+                                html += `<option value="${opt}" ${selected}>${opt}</option>`;
+                            }
+                            html += `</select>`;
+                            // vision_model 额外显示刷新按钮和时间戳
+                            if (key === 'vision_model') {
+                                const lastUpdatedText = info.last_updated || '（使用内置列表）';
+                                html += `
+                                <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                    <span id="vision_model_updated" style="font-size:12px;color:#888;">上次刷新：${lastUpdatedText}</span>
+                                    <button id="visionRefreshBtn" onclick="refreshVisionModels(event)"
+                                        style="padding:4px 12px;border-radius:5px;border:1px solid #4a90d9;background:#fff;
+                                               color:#4a90d9;cursor:pointer;font-size:12px;">
+                                        🔄 刷新模型列表
+                                    </button>
+                                </div>`;
+                            }
+                        } else {
+                            html += `<input id="setting_${key}" type="text" value="${info.value}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px; box-sizing: border-box;" />`;
+                        }
+                        html += `<button onclick="saveSetting('${key}')" style="margin-top: 8px; padding: 6px 16px; border-radius: 6px; border: none; background: var(--primary-color); color: white; cursor: pointer; font-size: 13px;">保存</button>`;
+                        html += `<span id="setting_status_${key}" style="margin-left: 10px; font-size: 12px; color: #52c41a;"></span>`;
+                        html += `</div>`;
+                    }
+                    if (!html) html = '<p style="color: gray;">暂无可配置项。</p>';
+                    body.innerHTML = html;
                 }
             } catch (e) {
                 body.innerHTML = `<span style="color:red">加载失败: ${e.message}</span>`;
@@ -652,6 +785,193 @@
 
         function closeModal(e) {
             document.getElementById('infoModal').style.display = 'none';
+        }
+
+        // ── Phase 8: 错题集查询 ──────────────────────────────────────────
+        let selectedErrorTags = new Set();
+
+        async function loadErrorTags() {
+            try {
+                const res = await fetch('/api/v1/errors/tags');
+                const data = await res.json();
+                const cloud = document.getElementById('errorTagCloud');
+                if (!cloud) return;
+                if (!data.tags || data.tags.length === 0) {
+                    cloud.innerHTML = '<span style="color:#999;font-size:12px;">暂无标签</span>';
+                    return;
+                }
+                cloud.innerHTML = data.tags.map(t =>
+                    `<span onclick="toggleErrorTag('${t.name}')"
+                          id="etag-${t.name}"
+                          style="padding:4px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid #ddd;
+                                 background:${selectedErrorTags.has(t.name) ? '#4a90d9' : '#f5f5f5'};
+                                 color:${selectedErrorTags.has(t.name) ? '#fff' : '#333'};">
+                        ${t.name} (${t.count})
+                    </span>`
+                ).join('');
+            } catch(e) { console.error('loadErrorTags failed:', e); }
+        }
+
+        function toggleErrorTag(tag) {
+            if (selectedErrorTags.has(tag)) {
+                selectedErrorTags.delete(tag);
+            } else {
+                selectedErrorTags.add(tag);
+            }
+            loadErrorTags();
+            searchErrors();
+        }
+
+        async function searchErrors() {
+            const search = document.getElementById('errorSearch')?.value || '';
+            const severity = document.getElementById('errorSeverityFilter')?.value || '';
+            const tags = Array.from(selectedErrorTags).join(',');
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (severity) params.set('severity', severity);
+            if (tags) params.set('tags', tags);
+
+            const list = document.getElementById('errorList');
+            if (!list) return;
+
+            try {
+                const res = await fetch(`/api/v1/errors/entries?${params}`);
+                const data = await res.json();
+                if (!data.entries || data.entries.length === 0) {
+                    list.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">暂无匹配的错题记录</div>';
+                    return;
+                }
+                const sevIcon = {critical:'🔴', warning:'🟡', info:'🔵'};
+                const srcLabel = {task_failure:'🤖 自动记录', auto:'🤖 AI生成', manual:'✍️ 人工录入'};
+                list.innerHTML = `<div style="font-size:12px;color:#999;margin-bottom:8px;">共 ${data.total} 条记录</div>` +
+                    data.entries.map(e => {
+                        const icon = sevIcon[e.severity] || '⚪';
+                        const tagsHtml = (e.tags||[]).map(t =>
+                            `<span style="padding:2px 6px;border-radius:8px;font-size:11px;background:#e8f0fe;color:#1967d2;">${t}</span>`
+                        ).join(' ');
+                        const label = srcLabel[e.source] || e.source;
+                        const dt = e.created_at ? new Date(e.created_at).toLocaleDateString() : '';
+                        return `
+                            <div style="border:1px solid #eee;padding:12px;margin-bottom:8px;border-radius:8px;cursor:pointer;"
+                                 onclick="showErrorDetail('${e.id}')">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <strong>${icon} ${e.title}</strong>
+                                    <span style="font-size:11px;color:#999;">命中 ${e.hit_count} 次</span>
+                                </div>
+                                <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap;">${tagsHtml || '<span style="color:#ccc;font-size:11px;">无标签</span>'}</div>
+                                <div style="margin-top:4px;font-size:12px;color:#999;">${label} · ${dt}</div>
+                            </div>`;
+                    }).join('');
+            } catch(e) {
+                list.innerHTML = `<span style="color:red">加载失败: ${e.message}</span>`;
+            }
+        }
+
+        async function showErrorDetail(entryId) {
+            const body = document.getElementById('modalBody');
+            if (!body) return;
+            try {
+                const res = await fetch(`/api/v1/errors/entries/${entryId}`);
+                const e = await res.json();
+                const sevIcon = {critical:'🔴', warning:'🟡', info:'🔵'}[e.severity] || '⚪';
+                const tagsHtml = (e.tags||[]).map(t =>
+                    `<span style="padding:2px 8px;border-radius:8px;font-size:12px;background:#e8f0fe;color:#1967d2;">${t}</span>`
+                ).join(' ');
+                const esc = s => (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                body.innerHTML = `
+                    <div style="margin-bottom:16px;">
+                        <a href="#" onclick="searchErrors();loadErrorTags();return false;"
+                           style="color:#4a90d9;text-decoration:none;font-size:13px;">← 返回列表</a>
+                    </div>
+                    <h3 style="margin:0 0 8px;">${sevIcon} ${esc(e.title)}</h3>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;">${tagsHtml || '<span style="color:#ccc;font-size:12px;">无标签</span>'}</div>
+                    <div>
+                        <h4 style="color:#555;margin:0 0 6px;">📋 错误上下文</h4>
+                        <pre style="white-space:pre-wrap;background:#f8f8f8;padding:12px;border-radius:6px;font-size:13px;margin:0;">${esc(e.context)}</pre>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <h4 style="color:#22863a;margin:0 0 6px;">✅ 纠正方案</h4>
+                        <pre style="white-space:pre-wrap;background:#f0fff0;padding:12px;border-radius:6px;font-size:13px;margin:0;">${esc(e.correction)}</pre>
+                    </div>
+                    ${e.prevention ? `
+                    <div style="margin-top:12px;">
+                        <h4 style="color:#b08800;margin:0 0 6px;">⚠️ 预防建议</h4>
+                        <pre style="white-space:pre-wrap;background:#fffde7;padding:12px;border-radius:6px;font-size:13px;margin:0;">${esc(e.prevention)}</pre>
+                    </div>` : ''}
+                    <div style="margin-top:16px;font-size:12px;color:#999;border-top:1px solid #eee;padding-top:8px;">
+                        来源: ${e.source} · 命中次数: ${e.hit_count} · 创建: ${e.created_at ? new Date(e.created_at).toLocaleString() : '—'}
+                        ${e.related_skill_ids?.length ? '<br>关联技能: ' + e.related_skill_ids.join(', ') : ''}
+                        <br>ID: <span style="font-family:monospace;">${e.id}</span>
+                    </div>
+                `;
+            } catch(err) {
+                console.error('showErrorDetail failed:', err);
+            }
+        }
+        // ── Phase 8 End ──────────────────────────────────────────────────
+
+        async function saveSetting(key) {
+            const el = document.getElementById(`setting_${key}`);
+            const statusEl = document.getElementById(`setting_status_${key}`);
+            if (!el) return;
+            const value = el.value;
+            try {
+                const res = await fetch(`/api/v1/settings/${key}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ value }),
+                });
+                if (res.ok) {
+                    statusEl.textContent = '✅ 已保存';
+                    statusEl.style.color = '#52c41a';
+                } else {
+                    const err = await res.json();
+                    statusEl.textContent = `❌ ${err.detail || '保存失败'}`;
+                    statusEl.style.color = '#ff4d4f';
+                }
+                setTimeout(() => { statusEl.textContent = ''; }, 3000);
+            } catch(e) {
+                statusEl.textContent = `❌ ${e.message}`;
+                statusEl.style.color = '#ff4d4f';
+            }
+        }
+
+        /**
+         * 刷新 Vision 模型列表：向 /api/v1/settings/vision-models/refresh 发请求，
+         * 用返回的最新列表更新 select 下拉并更新时间戳。
+         */
+        async function refreshVisionModels(evt) {
+            const btn = document.getElementById('visionRefreshBtn');
+            const labelEl = document.getElementById('vision_model_updated');
+            if (btn) { btn.disabled = true; btn.textContent = '刷新中...'; }
+            try {
+                const res = await fetch('/api/v1/settings/vision-models/refresh', { method: 'POST' });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(`刷新失败：${err.detail || res.statusText}`);
+                    return;
+                }
+                const data = await res.json();
+                // 更新 select 下拉选项
+                const sel = document.getElementById('setting_vision_model');
+                if (sel) {
+                    const currentVal = sel.value;
+                    sel.innerHTML = '';
+                    for (const m of data.models) {
+                        const opt = document.createElement('option');
+                        opt.value = m;
+                        opt.textContent = m;
+                        if (m === currentVal) opt.selected = true;
+                        sel.appendChild(opt);
+                    }
+                }
+                // 更新时间戳
+                if (labelEl) labelEl.textContent = `上次刷新：${data.updated_at} （${data.count} 个模型）`;
+            } catch(e) {
+                alert(`刷新异常：${e.message}`);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 刷新模型列表'; }
+            }
         }
 
         function toggleIntentionMode() {
@@ -981,98 +1301,178 @@
             return m[s] || s || '未知';
         }
 
-        let currentChatId = null;
-        let chats = {}; // 存储所有对话 { id: { title: string, messages: [] } }
+        // ── Phase 7: 后端驱动的会话管理 ────────────────────────────
+        let currentConversationId = null;
 
-        // 页面加载时尝试从 localStorage 恢复历史记录
-        window.onload = () => {
+        // C-1: 从 API 加载对话列表，渲染到左侧历史栏
+        async function renderHistoryList() {
+            try {
+                const res = await fetch('/api/v1/conversations');
+                const data = await res.json();
+                const convs = Array.isArray(data) ? data : (data.conversations || []);
+                historyList.innerHTML = '';
+                if (convs.length === 0) {
+                    historyList.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:20px 10px;">暂无对话记录</div>';
+                    return;
+                }
+                for (const conv of convs) {
+                    const div = document.createElement('div');
+                    div.className = `history-item ${conv.id === currentConversationId ? 'active' : ''}`;
+                    div.textContent = conv.title || '新对话';
+                    div.onclick = () => loadChat(conv.id);
+                    historyList.appendChild(div);
+                }
+            } catch(e) {
+                console.error('renderHistoryList failed:', e);
+            }
+        }
+
+        // C-1: 新建对话（向后端请求）
+        async function createNewChat() {
+            try {
+                const res = await fetch('/api/v1/conversations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: '新对话', model: modelSelect.value || 'ark-code-latest' })
+                });
+                const conv = await res.json();
+                currentConversationId = conv.id;
+                localStorage.setItem('wateryLastConversationId', conv.id);
+                chatTitle.textContent = conv.title || '新对话';
+                chatMessages.innerHTML = '';
+                showWelcomeMessage();
+                await renderHistoryList();
+            } catch(e) {
+                console.error('createNewChat failed:', e);
+            }
+        }
+
+        // C-1: 加载一个对话（从后端拉取完整消息列表）
+        async function loadChat(convId) {
+            if (!convId) return;
+            currentConversationId = convId;
+            localStorage.setItem('wateryLastConversationId', convId);
+            chatMessages.innerHTML = '';
+            chatTitle.textContent = '加载中...';
+            try {
+                const res = await fetch(`/api/v1/conversations/${convId}`);
+                if (!res.ok) { showWelcomeMessage(); return; }
+                const data = await res.json();
+                chatTitle.textContent = data.title || '对话';
+                const messages = data.messages || [];
+                if (messages.length === 0) {
+                    showWelcomeMessage();
+                } else {
+                    for (const msg of messages) {
+                        if (msg.role === 'system') continue; // 不显示系统消息
+                        if (msg.role === 'tool') continue;   // 工具回复不单独显示
+                        // C-3: 处理历史中的 tool_calls（OpenAI 格式 → 展示卡片）
+                        let displayToolCalls = null;
+                        const rawToolCalls = msg.tool_calls;
+                        if (rawToolCalls) {
+                            try {
+                                const parsed = typeof rawToolCalls === 'string'
+                                    ? JSON.parse(rawToolCalls) : rawToolCalls;
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                    displayToolCalls = parsed.map(tc => ({
+                                        tool_name: tc.function?.name || tc.name || '?',
+                                        tool_call_id: tc.id,
+                                        result: { status: 'success', result: '(历史记录)' }
+                                    }));
+                                }
+                            } catch {}
+                        }
+                        appendMessageWithTools(msg.role, msg.content, displayToolCalls);
+                    }
+                }
+                await renderHistoryList();
+            } catch(e) {
+                console.error('loadChat failed:', e);
+                showWelcomeMessage();
+            }
+        }
+
+        // C-1: 删除当前对话
+        async function deleteCurrentChat() {
+            if (!currentConversationId) return;
+            if (!confirm('确定要删除当前对话吗？')) return;
+            try {
+                await fetch(`/api/v1/conversations/${currentConversationId}`, { method: 'DELETE' });
+                currentConversationId = null;
+                localStorage.removeItem('wateryLastConversationId');
+            } catch(e) {
+                console.error('deleteCurrentChat failed:', e);
+            }
+            await renderHistoryList();
+            try {
+                const res = await fetch('/api/v1/conversations');
+                const data = await res.json();
+                const convs = Array.isArray(data) ? data : (data.conversations || []);
+                if (convs.length > 0) {
+                    await loadChat(convs[0].id);
+                } else {
+                    await createNewChat();
+                }
+            } catch { await createNewChat(); }
+        }
+
+        // C-4: 迁移 localStorage 历史到后端
+        async function migrateLocalStorageToBackend() {
+            const raw = localStorage.getItem('wateryChats');
+            if (!raw) return;
+            let oldChats;
+            try { oldChats = JSON.parse(raw); } catch { localStorage.removeItem('wateryChats'); return; }
+            const chatIds = Object.keys(oldChats);
+            if (chatIds.length === 0) { localStorage.removeItem('wateryChats'); return; }
+            console.log(`正在迁移 ${chatIds.length} 个历史对话到后端...`);
+            for (const chatId of chatIds) {
+                const chat = oldChats[chatId];
+                if (!chat || !chat.messages || chat.messages.length === 0) continue;
+                try {
+                    const createRes = await fetch('/api/v1/conversations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: chat.title || '迁移对话', model: 'ark-code-latest' })
+                    });
+                    const newConv = await createRes.json();
+                    await fetch(`/api/v1/conversations/${newConv.id}/import`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: chat.messages })
+                    });
+                } catch(e) {
+                    console.warn('迁移对话失败:', chat.title, e);
+                }
+            }
+            localStorage.removeItem('wateryChats');
+            console.log('历史对话迁移完成。');
+        }
+
+        // 页面加载入口
+        window.onload = async () => {
             loadModels();
             updateProxyUI();
-            const savedChats = localStorage.getItem('wateryChats');
-            if (savedChats) {
-                try {
-                    chats = JSON.parse(savedChats);
-                    renderHistoryList();
-                    
-                    // 尝试加载最后一次的对话
-                    const chatIds = Object.keys(chats);
-                    if (chatIds.length > 0) {
-                        loadChat(chatIds[chatIds.length - 1]);
-                    } else {
-                        createNewChat();
-                    }
-                } catch (e) {
-                    console.error("Failed to parse chats", e);
-                    createNewChat();
-                }
+            // C-4: 先迁移旧 localStorage 数据
+            await migrateLocalStorageToBackend();
+            // 加载对话列表
+            await renderHistoryList();
+            // 恢复上次对话
+            const lastId = localStorage.getItem('wateryLastConversationId');
+            if (lastId) {
+                await loadChat(lastId);
             } else {
-                createNewChat();
+                try {
+                    const res = await fetch('/api/v1/conversations');
+                    const data = await res.json();
+                    const convs = Array.isArray(data) ? data : (data.conversations || []);
+                    if (convs.length > 0) {
+                        await loadChat(convs[0].id);
+                    } else {
+                        await createNewChat();
+                    }
+                } catch { await createNewChat(); }
             }
         };
-
-        function saveChats() {
-            localStorage.setItem('wateryChats', JSON.stringify(chats));
-            renderHistoryList();
-        }
-
-        function createNewChat() {
-            currentChatId = 'chat_' + Date.now();
-            chats[currentChatId] = {
-                title: '新对话',
-                messages: []
-            };
-            saveChats();
-            loadChat(currentChatId);
-        }
-
-        function loadChat(chatId) {
-            if (!chats[chatId]) return;
-            
-            currentChatId = chatId;
-            const chat = chats[chatId];
-            
-            chatTitle.textContent = chat.title;
-            chatMessages.innerHTML = '';
-            
-            if (chat.messages.length === 0) {
-                showWelcomeMessage();
-            } else {
-                chat.messages.forEach(msg => {
-                    appendMessage(msg.role, msg.content);
-                });
-            }
-            
-            renderHistoryList();
-        }
-
-        function deleteCurrentChat() {
-            if (!currentChatId || !chats[currentChatId]) return;
-            
-            if (confirm("确定要删除当前对话吗？")) {
-                delete chats[currentChatId];
-                saveChats();
-                
-                const remainingIds = Object.keys(chats);
-                if (remainingIds.length > 0) {
-                    loadChat(remainingIds[remainingIds.length - 1]);
-                } else {
-                    createNewChat();
-                }
-            }
-        }
-
-        function renderHistoryList() {
-            historyList.innerHTML = '';
-            // 倒序渲染，最新的在上面
-            Object.keys(chats).reverse().forEach(chatId => {
-                const chat = chats[chatId];
-                const div = document.createElement('div');
-                div.className = `history-item ${chatId === currentChatId ? 'active' : ''}`;
-                div.textContent = chat.title;
-                div.onclick = () => loadChat(chatId);
-                historyList.appendChild(div);
-            });
-        }
 
         function showWelcomeMessage() {
             chatMessages.innerHTML = `
@@ -1089,11 +1489,152 @@
             }
         }
 
+        // ── 附件支持 ───────────────────────────────────────────
+        let pendingAttachments = []; // [{type:'image'|'text', name, content, mimeType?}]
+
+        /**
+         * 处理用户选择的文件列表：
+         * - 图片   → 浏览器端转 base64 data URL（无需上传服务器）
+         * - .txt/.md → FileReader 读取文本（无需上传）
+         * - PDF/DOCX → 上传到 /api/v1/chat/upload 进行服务器端提取
+         */
+        async function handleFileAttach(event) {
+            const files = Array.from(event.target.files);
+            event.target.value = ''; // 允许重复选择同一文件
+            const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
+
+            for (const file of files) {
+                if (file.size > MAX_SIZE) {
+                    alert(`"《${file.name}》"超过 20 MB 限制，已跳过。`);
+                    continue;
+                }
+                try {
+                    if (file.type.startsWith('image/')) {
+                        const dataUrl = await _readAsDataURL(file);
+                        pendingAttachments.push({ type: 'image', name: file.name, content: dataUrl, mimeType: file.type });
+                        renderAttachmentPreview();
+                    } else if (file.type.startsWith('text/') || /\.(txt|md|csv|log)$/i.test(file.name)) {
+                        const text = await _readAsText(file);
+                        pendingAttachments.push({ type: 'text', name: file.name, content: text });
+                        renderAttachmentPreview();
+                    } else {
+                        // PDF / DOCX —— 上传到后端提取文本
+                        const chipId = 'chip-loading-' + Date.now();
+                        _showLoadingChip(file.name, chipId);
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        const res = await fetch('/api/v1/chat/upload', { method: 'POST', body: formData });
+                        document.getElementById(chipId)?.remove();
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            alert(`处理《${file.name}》失败：${err.detail || res.statusText}`);
+                            continue;
+                        }
+                        const data = await res.json();
+                        pendingAttachments.push({ type: 'text', name: data.name, content: data.content });
+                        renderAttachmentPreview();
+                    }
+                } catch (e) {
+                    alert(`附件处理异常：${e.message}`);
+                }
+            }
+        }
+
+        function _readAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = e => resolve(e.target.result);
+                r.onerror = reject;
+                r.readAsDataURL(file);
+            });
+        }
+
+        function _readAsText(file) {
+            return new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = e => resolve(e.target.result);
+                r.onerror = reject;
+                r.readAsText(file, 'UTF-8');
+            });
+        }
+
+        function _showLoadingChip(name, id) {
+            const area = document.getElementById('attachmentPreviewArea');
+            area.style.display = 'flex';
+            const chip = document.createElement('div');
+            chip.className = 'attachment-chip';
+            chip.id = id;
+            chip.innerHTML = `<span>⏳</span><span class="chip-name">${name.substring(0, 18)}</span><span class="chip-meta">上传中...</span>`;
+            area.appendChild(chip);
+        }
+
+        function removeAttachment(index) {
+            pendingAttachments.splice(index, 1);
+            renderAttachmentPreview();
+        }
+
+        function renderAttachmentPreview() {
+            const area = document.getElementById('attachmentPreviewArea');
+            if (!pendingAttachments.length) {
+                area.style.display = 'none';
+                area.innerHTML = '';
+                return;
+            }
+            area.style.display = 'flex';
+            area.innerHTML = pendingAttachments.map((att, i) => {
+                if (att.type === 'image') {
+                    return `<div class="attachment-chip">
+                        <img src="${att.content}" alt="${att.name}">
+                        <span class="chip-name" title="${att.name}">${att.name.substring(0, 16)}</span>
+                        <button class="chip-remove" onclick="removeAttachment(${i})" title="移除">&times;</button>
+                    </div>`;
+                }
+                const icon = /\.pdf$/i.test(att.name) ? '📄' : /\.docx?$/i.test(att.name) ? '📝' : '📃';
+                const sz = att.content.length >= 1000
+                    ? `${Math.round(att.content.length / 1000)}K字`
+                    : `${att.content.length}字`;
+                return `<div class="attachment-chip">
+                    <span>${icon}</span>
+                    <span class="chip-name" title="${att.name}">${att.name.substring(0, 18)}</span>
+                    <span class="chip-meta">${sz}</span>
+                    <button class="chip-remove" onclick="removeAttachment(${i})" title="移除">&times;</button>
+                </div>`;
+            }).join('');
+        }
+
+        /**
+         * 在聊天消息区显示用户消息（含附件预览）。
+         * 图片显示缩略图；文件显示图标+文件名。
+         */
+        function appendUserMessage(text, attachments) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message user';
+            let html = '';
+
+            if (attachments && attachments.length > 0) {
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">';
+                for (const att of attachments) {
+                    if (att.type === 'image') {
+                        html += `<img src="${att.content}" alt="${att.name}" style="max-width:180px;max-height:140px;border-radius:8px;object-fit:cover;">`;
+                    } else {
+                        const icon = /\.pdf$/i.test(att.name) ? '📄' : /\.docx?$/i.test(att.name) ? '📝' : '📃';
+                        html += `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:10px;background:rgba(255,255,255,0.3);font-size:12px;">${icon} ${att.name}</span>`;
+                    }
+                }
+                html += '</div>';
+            }
+
+            if (text) html += text.replace(/\n/g, '<br>');
+            msgDiv.innerHTML = html;
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
         function appendMessage(role, content) {
             appendMessageWithTools(role, content, null);
         }
 
-        // C-1: 支持工具调用卡片的消息渲染
+        // 支持工具调用卡片的消息渲染
         function appendMessageWithTools(role, content, toolResults) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role}`;
@@ -1121,32 +1662,49 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
+        // C-2: 新版 sendMessage — 只发单条用户消息 + conversation_id，历史由后端管理
         async function sendMessage() {
             const text = userInput.value.trim();
-            if (!text) return;
+            const hasAttachments = pendingAttachments.length > 0;
+            if (!text && !hasAttachments) return;
 
-            // 禁用输入
+            // 快照并清空附件列表
+            const attachmentsSnap = [...pendingAttachments];
+            pendingAttachments = [];
+            renderAttachmentPreview();
+
             userInput.value = '';
             userInput.disabled = true;
             sendBtn.disabled = true;
 
-            // 显示用户消息
-            appendMessage('user', text);
-            
-            // 更新当前对话状态
-            if (!chats[currentChatId]) return;
-            
-            // 如果是第一条消息，更新标题
-            if (chats[currentChatId].messages.length === 0) {
-                chats[currentChatId].title = text.substring(0, 15) + (text.length > 15 ? '...' : '');
-                chatTitle.textContent = chats[currentChatId].title;
-                renderHistoryList();
-            }
-            
-            chats[currentChatId].messages.push({ role: 'user', content: text });
-            saveChats();
+            // 渲染用户消息（含附件预览）
+            appendUserMessage(text, attachmentsSnap);
 
-            // 显示加载中
+            // 构建发送给 LLM 的 content：纯文本 or 多模态数组
+            const imgAttachments = attachmentsSnap.filter(a => a.type === 'image');
+            const textAttachments = attachmentsSnap.filter(a => a.type === 'text');
+
+            let fullText = text;
+            for (const tf of textAttachments) {
+                const excerpt = tf.content.length > 8000
+                    ? tf.content.substring(0, 8000) + '\n…(内容过长，已截断)'
+                    : tf.content;
+                fullText += `\n\n---\n[附件：${tf.name}]\n\`\`\`\n${excerpt}\n\`\`\``;
+            }
+
+            let messageContent;
+            if (imgAttachments.length > 0) {
+                // 多模态消息（需要支持 Vision 的模型，如 gemini-2.5-flash）
+                const parts = [];
+                if (fullText.trim()) parts.push({ type: 'text', text: fullText });
+                for (const img of imgAttachments) {
+                    parts.push({ type: 'image_url', image_url: { url: img.content } });
+                }
+                messageContent = parts;
+            } else {
+                messageContent = fullText || '';
+            }
+
             const loadingId = 'loading-' + Date.now();
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'message assistant';
@@ -1156,67 +1714,64 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
             try {
-                // 根据模式选择接口
-                const endpoint = isIntentionMode ? '/api/v1/intention' : '/api/v1/chat';
-                const body = isIntentionMode 
-                    ? JSON.stringify({ intention: text })
-                    : JSON.stringify({
-                        messages: chats[currentChatId].messages,
-                        model: modelSelect.value
+                if (isIntentionMode) {
+                    const response = await fetch('/api/v1/intention', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ intention: text })
                     });
-
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: body
-                });
-
-                const data = await response.json();
-                
-                // 移除加载中
-                document.getElementById(loadingId).remove();
-
-                if (response.ok) {
-                    let content;
-                    if (isIntentionMode) {
-                        if (data.status === 'success' && data.task_ids && data.task_ids.length > 0) {
-                            const taskCount = data.task_ids.length;
-                            const summaryId = 'task-summary-' + Date.now();
-                            // 插入一个占位节点作为结果容器
-                            const container = document.createElement('div');
-                            container.className = 'message assistant';
-                            container.id = summaryId;
-                            container.textContent = `⏳ 已分配 ${taskCount} 个子任务，等待执行中...`;
-                            chatMessages.appendChild(container);
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
-                            // 开始后台轮询
-                            pollUntilDone(data.task_ids, summaryId);
-                            chats[currentChatId].messages.push({ role: 'assistant', content: `[任务已分配: ${taskCount} 个子任务]` });
-                            saveChats();
-                            refreshTasks();
-                        } else {
-                            content = `✅ 任务已发送。${data.message || ''}`;
-                            appendMessage('assistant', content);
-                            chats[currentChatId].messages.push({ role: 'assistant', content: content });
-                            saveChats();
-                        }
+                    const data = await response.json();
+                    document.getElementById(loadingId)?.remove();
+                    if (response.ok && data.status === 'success' && data.task_ids?.length > 0) {
+                        const summaryId = 'task-summary-' + Date.now();
+                        const container = document.createElement('div');
+                        container.className = 'message assistant';
+                        container.id = summaryId;
+                        container.textContent = `⏳ 已分配 ${data.task_ids.length} 个子任务，等待执行中...`;
+                        chatMessages.appendChild(container);
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        pollUntilDone(data.task_ids, summaryId);
+                        refreshTasks();
                     } else {
-                        const toolResults = data.tool_results || null;
-                        appendMessageWithTools('assistant', data.content, toolResults);
-                        chats[currentChatId].messages.push({ role: 'assistant', content: data.content });
-                        saveChats();
+                        appendMessage('assistant', `✅ 任务已发送。${data.message || ''}`);
                     }
                 } else {
-                    appendMessage('assistant', `❌ 错误: ${data.detail || '请求失败'}`);
+                    // 确保有当前对话
+                    if (!currentConversationId) {
+                        await createNewChat();
+                    }
+                    const response = await fetch('/api/v1/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            conversation_id: currentConversationId,
+                            messages: [{ role: 'user', content: messageContent }],
+                            model: modelSelect.value
+                        })
+                    });
+                    const data = await response.json();
+                    document.getElementById(loadingId)?.remove();
+                    if (response.ok) {
+                        const toolResults = data.tool_results || null;
+                        appendMessageWithTools('assistant', data.content, toolResults);
+                        // 后端可能返回最终 conversation_id（首次创建时）
+                        if (data.conversation_id) {
+                            currentConversationId = data.conversation_id;
+                            localStorage.setItem('wateryLastConversationId', data.conversation_id);
+                        }
+                        // 异步刷新侧边栏（更新标题、排序）
+                        renderHistoryList().then(() => {
+                            const activeItem = historyList.querySelector('.history-item.active');
+                            if (activeItem) chatTitle.textContent = activeItem.textContent;
+                        });
+                    } else {
+                        appendMessage('assistant', `❌ 错误: ${data.detail || '请求失败'}`);
+                    }
                 }
             } catch (error) {
-                const loader = document.getElementById(loadingId);
-                if (loader) loader.remove();
+                document.getElementById(loadingId)?.remove();
                 appendMessage('assistant', `❌ 网络错误: ${error.message}`);
             } finally {
-                // 恢复输入
                 userInput.disabled = false;
                 sendBtn.disabled = false;
                 userInput.focus();

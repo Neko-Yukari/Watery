@@ -14,6 +14,8 @@ sqlmodel==0.0.16
 pypdf>=4.0.0
 pdfplumber>=0.11.0
 python-multipart>=0.0.6
+# 聊天附件支持（文档提取）
+python-docx>=1.1.0
 # ms-agent 三大能力集成（deep_research / code_genesis / doc_research）
 ms-agent>=1.5.0
 omegaconf>=2.3.0

@@ -167,14 +167,78 @@ class TaskOrchestrator:
         for cid in cascade_ids:
             await self.fail_task(cid, f"上游任务 {task_id} 失败，级联终止")
 
-        # 自动写入 Error Ledger（延迟导入，避免模块循环引用）
+        # 自动写入 Error Ledger（Phase 8：LLM 自动生成标签化错题）
         if task_description:
             try:
                 from app.services.memory_retriever import memory_retriever
-                await memory_retriever.add_error_entry(
-                    context=f"任务描述: {task_description}\n错误信息: {error_msg}",
-                    correction="请检查任务依赖的技能是否存在，或调整任务描述后重新提交。",
+                from app.services.model_router import model_router
+                from app.models.schemas import Message as _Msg
+                from app.models.database import ErrorEntry
+                from app.core.db import engine as _engine
+                from sqlmodel import Session as _Session
+                import json as _json, re as _re
+
+                # 调用 LLM 生成结构化错题
+                prompt = (
+                    f"你是一个错误分析助手。请分析以下任务失败信息，生成一条结构化的错题记录。\n\n"
+                    f"任务描述：{task_description}\n错误信息：{error_msg}\n\n"
+                    '请以 JSON 格式输出（不要输出其他内容）：\n'
+                    '{\n'
+                    '    "title": "简短标题（10-20字概括错误）",\n'
+                    '    "context": "详细的错误上下文描述",\n'
+                    '    "correction": "正确的解决方案",\n'
+                    '    "prevention": "预防再次发生的建议",\n'
+                    '    "tags": ["3-5个分类标签"],\n'
+                    '    "severity": "critical 或 warning 或 info"\n'
+                    '}'
                 )
+                resp = await model_router.generate(
+                    messages=[_Msg(role="user", content=prompt)],
+                    temperature=0.3,
+                    max_tokens=500,
+                )
+                tagged: dict = {}
+                text = resp.content or ""
+                m = _re.search(r'\{.*\}', text, _re.DOTALL)
+                if m:
+                    try:
+                        tagged = _json.loads(m.group())
+                    except Exception:
+                        pass
+
+                if not tagged:
+                    tagged = {
+                        "title": (task_description or "")[:30],
+                        "context": f"任务描述: {task_description}\n错误信息: {error_msg}",
+                        "correction": "请检查任务依赖的技能是否存在，或调整任务描述后重新提交。",
+                        "prevention": "",
+                        "tags": ["general"],
+                        "severity": "warning",
+                    }
+
+                entry = ErrorEntry(
+                    title=tagged["title"],
+                    context=tagged["context"],
+                    correction=tagged["correction"],
+                    prevention=tagged.get("prevention", ""),
+                    tags=tagged["tags"],
+                    severity=tagged.get("severity", "warning"),
+                    source="task_failure",
+                )
+                with _Session(_engine) as session:
+                    session.add(entry)
+                    session.commit()
+                    session.refresh(entry)
+                    entry_id = entry.id
+
+                await memory_retriever.add_error_entry_v2(
+                    entry_id=entry_id,
+                    context=tagged["context"],
+                    correction=tagged["correction"],
+                    tags=tagged["tags"],
+                    severity=tagged.get("severity", "warning"),
+                )
+                logger.info(f"Phase8: auto-tagged error entry {entry_id} created (tags={tagged['tags']})")
             except Exception as e:
                 logger.error(f"Failed to write error entry to ledger: {e}")
 

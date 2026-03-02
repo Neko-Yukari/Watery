@@ -158,3 +158,88 @@
 ### 10.3 前端增强 ✅
 - **工具调用可视化 (C-1)**: 聊天气泡内嵌工具调用卡片（蓝色成功/红色失败），展示工具名和结果摘要。
 - **三 Tab 侧栏看板 (C-2)**: 右侧面板从单一任务看板升级为三 Tab 结构——📋 任务（5s 刷新）| 🔬 研究（30s 刷新，支持新建/详情）| 💻 代码（30s 刷新，支持新建/详情）。
+
+## 11. Phase 7 已实现功能 — 对话 Session 持久化 (2026-03-02)
+
+> **核心目标**：将对话历史从前端 localStorage 迁移至后端 SQLite 持久化存储，实现跨设备会话同步、Token 优化与完整的 Tool Calling 上下文保留。
+
+### 11.1 组 A — 数据模型 + DB 迁移 ✅
+- **Conversation 表** (`app/models/database.py`)：`id`(UUID)、`title`(自动命名)、`model`(绑定模型)、`message_count`(冗余计数)、`is_archived`(软删除)、`created_at`、`updated_at`。
+- **ConversationMessage 表** (`app/models/database.py`)：`id`(UUID)、`conversation_id`(外键)、`role`(system/user/assistant/tool)、`content`、`tool_calls_json`(完整 Tool Calling 序列化存储)、`tool_call_id`、`token_count`(Token 估算)、`seq`(消息排序序号)、`created_at`。
+- **DB 迁移** (`app/core/db.py`)：`_migrate_schema()` 中预留 Phase 7 增量列（`message_count`、`is_archived`、`token_count`），`SQLModel.metadata.create_all()` 自动建新表，已有表无回归。
+
+### 11.2 组 B — 会话 REST API + `/chat` 端点改造 ✅
+- **会话 CRUD API**：
+  - `POST /api/v1/conversations` — 创建新会话，支持可选 `system_prompt` 自动注入。
+  - `GET /api/v1/conversations` — 列出会话（按时间倒序，支持 `?archived=true` 筛选归档）。
+  - `GET /api/v1/conversations/{id}` — 获取会话详情 + 全部消息（含 `tool_calls` 反序列化）。
+  - `PATCH /api/v1/conversations/{id}` — 更新标题/模型/归档状态（PATCH 语义）。
+  - `DELETE /api/v1/conversations/{id}` — 软删除（默认）或 `?hard=true` 硬删除（含级联消息清除）。
+  - `POST /api/v1/conversations/{id}/import` — 批量导入历史消息（localStorage 迁移专用）。
+- **`/chat` 端点改造**：
+  - **双模式支持**：`conversation_id`（新模式，后端加载历史+持久化）与 `messages`（旧模式，完全兼容零回归）二选一。
+  - **自动消息持久化** (`_persist_chat_turn`)：每轮对话完成后批量写入 user + tool 中间消息 + final assistant 回复，`seq` 递增、`message_count` 同步更新。
+  - **自动标题生成**：首条 user 消息自动截取前 20 字设为会话标题。
+  - **ChatResponse 扩展**：新增 `conversation_id` 字段回传前端。
+- **Schema 扩展** (`app/models/schemas.py`)：新增 `ConversationCreate`、`ConversationInfo`、`ConversationDetail`、`ConversationUpdate`、`ImportMessagesRequest` 五个 Pydantic 模型；`ChatRequest` 新增 `conversation_id` 可选字段。
+
+### 11.3 组 C — 前端迁移（localStorage → API 驱动）✅
+- **会话管理全面 API 化** (`app/web/index.html`)：
+  - `renderHistoryList()` → `GET /api/v1/conversations` 渲染侧边栏。
+  - `createNewChat()` → `POST /api/v1/conversations` 创建新会话。
+  - `loadChat(convId)` → `GET /api/v1/conversations/{convId}` 加载完整消息并渲染（含 Tool Calling 卡片）。
+  - `deleteCurrentChat()` → `DELETE /api/v1/conversations/{id}` 删除后自动切换到下一个会话。
+- **`sendMessage()` 重写**：只发单条 user 消息 + `conversation_id`，历史由后端管理，不再维护内存 `chats` 对象或 `saveChats()` 到 localStorage。
+- **localStorage 仅保留 `wateryLastConversationId`**：记住上次打开的会话，页面加载时恢复。
+- **Tool Calling 历史可视化 (C-3)**：加载历史会话时正确渲染 `tool_calls` 为工具调用卡片。
+- **自动迁移 (C-4)**：`migrateLocalStorageToBackend()` 在 `window.onload` 中自动检测旧 `wateryChats` 数据，逐个创建会话并通过 `/import` 端点批量导入消息，迁移完成后清除 localStorage 旧数据。
+
+### 11.4 组 D — 长对话 Token 优化 ✅
+- **Token 估算** (`_estimate_tokens`)：UTF-8 字节数 / 3 快速估算（适用于中英混合内容）。
+- **智能截断策略** (`_truncate_messages`)：
+  - 永远保留 `role=system` 消息。
+  - 永远保留最近 4 条消息（约最近 2 轮对话）。
+  - 从最早的非 system 消息开始删除，直到总 token 数 < 阈值。
+  - 截断点自动插入 `[注意: 更早的 N 条消息已因上下文长度限制被省略]` 提示。
+- **多模型上下文窗口适配**：`ark-code-latest` 28K、`gemini-2.0-flash` 100K、`gemini-2.5-pro` 200K，按模型自动选择截断阈值。
+- **Token 统计写入 DB**：每条 `ConversationMessage` 的 `token_count` 字段在写入时自动填充。
+
+## 12. Phase 10 已实现功能 — 对话自治能力扩展 + 主动空闲检测 (2026-03-02)
+
+> **核心目标**：补齐 AI 在对话中自主管理错题库、联网搜索、对话摘要、飞书推送的能力缺口，
+> 并升级 SkillExecutor 超时机制为基于输出活跃度的主动空闲检测。
+
+### 12.1 SkillExecutor 主动空闲检测机制 ✅
+- **双层超时策略**（替代旧的单一 `timeout=60s`）：
+  - `idle_timeout`（默认 30s）：子进程 stdout/stderr 持续无输出超过此时间 → 判定"卡死" → kill。
+  - `max_timeout`（默认 300s）：绝对安全上限，无论是否有输出，超过即 kill。
+- **stderr 心跳协议**：长耗时技能通过 `print("[progress] ...", file=sys.stderr, flush=True)` 发送心跳，
+  每次输出刷新空闲计时器。快速技能无需任何改动（30s 内完成即可）。
+- **`_monitored_communicate()`**：替代 `process.communicate()`，三个并发协程——
+  stdout reader + stderr reader + watchdog，实时监控进程活跃度。
+
+### 12.2 新增技能：错题库管理（`error_ledger_crud`）✅
+- **操作**：`create` / `list` / `get` / `delete` / `search`
+- **能力**：AI 在对话中可自主记录错误经验、按标签筛选查询、删除过时条目。
+- **实现**：调用后端 `POST/GET/DELETE /api/v1/errors/entries` API。
+
+### 12.3 新增技能：联网搜索（`web_search`）✅
+- **搜索引擎**：EXA（语义搜索，优先） → SerpAPI（Google 搜索，fallback）。
+- **能力**：AI 在对话中遇到需要实时信息的问题时自动联网搜索。
+- **参数**：`query`（必填）、`num_results`、`search_type`（auto/keyword/neural）、`include_content`。
+- **依赖**：仅使用 httpx（已在项目依赖中），需配置 `EXA_API_KEY` 或 `SERPAPI_API_KEY`。
+
+### 12.4 新增技能：对话历史摘要（`conversation_summary`）✅
+- **工作流**：获取会话列表 → 按日期过滤 → 加载完整消息 → LLM 生成结构化日报。
+- **输出**：Markdown 格式日报（概览 / 关键主题 / 已完成事项 / 待办 / 错误经验 / 技能改进建议）。
+- **Token 安全**：超长内容自动截断至 60K 字符（约 20K tokens）。
+- **心跳**：每个 API 调用阶段写 stderr 心跳，避免被空闲检测 kill。
+
+### 12.5 新增技能：飞书机器人推送（`feishu_webhook`）✅
+- **消息格式**：纯文本（`text`）/ 富文本（`rich_text`）/ 交互卡片（`interactive`）。
+- **签名校验**：支持飞书 HMAC-SHA256 签名验证（`FEISHU_WEBHOOK_SECRET`）。
+- **配置**：`FEISHU_WEBHOOK_URL` + `FEISHU_WEBHOOK_SECRET`（可选）写入 `.env`。
+- **卡片定制**：支持 12 种头部颜色、Markdown 子集正文。
+
+### 12.6 配置扩展 ✅
+- **`app/core/config.py`**：新增 `feishu_webhook_url`、`feishu_webhook_secret` 配置项。

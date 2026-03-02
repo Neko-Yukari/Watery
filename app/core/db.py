@@ -28,6 +28,22 @@ def _migrate_schema():
         # Phase 6 B-3 文档型技能
         ("skillmetadata", "skill_type",        "TEXT NOT NULL DEFAULT 'executable'"),
         ("skillmetadata", "knowledge_content", "TEXT"),
+        # Phase 7 — 对话 Session 持久化（新表，以下只预留未来扩展列用）
+        ("conversation",        "message_count", "INTEGER DEFAULT 0"),
+        ("conversation",        "is_archived",   "BOOLEAN DEFAULT 0"),
+        ("conversationmessage", "token_count",   "INTEGER"),
+        # Phase 8 — 标签化错题集
+        ("skillmetadata", "error_tags",          "JSON DEFAULT '[]'"),
+        ("errorentry",    "prevention",          "TEXT DEFAULT ''"),
+        ("errorentry",    "hit_count",           "INTEGER DEFAULT 0"),
+        ("errorentry",    "related_skill_ids",   "JSON DEFAULT '[]'"),
+        # Phase 9 — PDF 大文件处理
+        ("pdfdocument",   "processed_chunks",    "INTEGER DEFAULT 0"),
+        # Phase 11 — 代码语义索引（codesymbol 为新表，以下预留增量列）
+        ("codesymbol",    "decorators",           "JSON DEFAULT '[]'"),
+        ("codesymbol",    "imports",              "JSON DEFAULT '[]'"),
+        ("codesymbol",    "file_hash",            "TEXT DEFAULT ''"),
+        ("codesymbol",    "indexed_at",           "DATETIME"),
     ]
     with engine.connect() as conn:
         for table, column, col_def in migrations:

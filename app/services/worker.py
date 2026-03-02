@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from app.services.orchestrator import orchestrator
 from app.services.executor import skill_executor
 from app.services.model_router import model_router
-from app.models.database import Task, SkillMetadata
+from app.models.database import ErrorEntry, Task, SkillMetadata
 from app.models.schemas import Message
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,21 @@ REPORT_MAX_CHARS = 8000
 # ---- 模块级共享状态（所有 WorkerAgent 实例共用）----
 # research_task_id -> original_query
 _pending_amendments: Dict[str, str] = {}
+
+
+def _increment_hit_count(entry_id: str) -> None:
+    """原子性递增 ErrorEntry 的 hit_count（Phase 8）。"""
+    try:
+        from sqlmodel import Session
+        from app.core.db import engine
+        with Session(engine) as session:
+            entry = session.get(ErrorEntry, entry_id)
+            if entry:
+                entry.hit_count = (entry.hit_count or 0) + 1
+                session.add(entry)
+                session.commit()
+    except Exception:
+        pass
 
 
 class WorkerAgent:
@@ -78,6 +93,38 @@ class WorkerAgent:
             skill_distances: list = context.get("skill_distances", [])
             error_warnings: list = context.get("error_warnings", [])
 
+            # ---- Step 1.5: Phase 8 — 按 Skill.error_tags 精确检索相关错题 ----
+            targeted_error_warnings: list = []
+            if skill_ids:
+                top_skill_id = skill_ids[0]
+                with Session(engine) as session:
+                    skill_meta_for_tags = session.exec(
+                        select(SkillMetadata).where(SkillMetadata.id == top_skill_id)
+                    ).first()
+
+                if skill_meta_for_tags:
+                    skill_error_tags = getattr(skill_meta_for_tags, "error_tags", []) or []
+                    if skill_error_tags:
+                        tagged_errors = await memory_retriever.retrieve_errors_by_tags(
+                            task_description=task.description,
+                            tags=skill_error_tags,
+                            top_k=3,
+                        )
+                        for te in tagged_errors:
+                            tag_label = ",".join(te["tags"]) if te["tags"] else "general"
+                            targeted_error_warnings.append(
+                                f"[{tag_label}] {te['context']}\n→ Correction: {te['correction']}"
+                            )
+                            _increment_hit_count(te["entry_id"])
+                        if targeted_error_warnings:
+                            logger.info(
+                                f"{self.name} Phase8: retrieved {len(targeted_error_warnings)} "
+                                f"tagged errors (tags={skill_error_tags}) for task {task.id[:8]}"
+                            )
+
+            # 合并：优先使用标签化错题，语义错题作为补充
+            final_error_warnings = targeted_error_warnings if targeted_error_warnings else error_warnings
+
             # ---- Step 2: 知识缺口检测 ----
             knowledge_gap = self._detect_knowledge_gap(skill_ids, skill_distances)
             if knowledge_gap:
@@ -127,7 +174,6 @@ class WorkerAgent:
                             language=skill_meta.language,
                             entrypoint=skill_meta.entrypoint,
                             params={"description": task.description},
-                            timeout=60,
                         )
                         if exec_result["status"] == "success":
                             result = exec_result.get("result", "")
@@ -142,8 +188,8 @@ class WorkerAgent:
             # ---- Step 4: LLM Fallback（含知识注入）----
             if result is None:
                 error_hint = (
-                    "\n".join(error_warnings)
-                    if error_warnings
+                    "\n".join(final_error_warnings)
+                    if final_error_warnings
                     else "无历史错误记录。"
                 )
                 knowledge_hint = (

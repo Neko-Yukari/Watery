@@ -55,11 +55,118 @@ async def lifespan(app: FastAPI):
     _track(asyncio.create_task(proxy_manager.start_loop()))
     logging.info("ProxyManager 后台同步已启用。")
 
-    # ---- error_ledger.md → ChromaDB 幂等入库 ----
-    from app.services.memory_retriever import memory_retriever
-    ledger_path = "/app/error_ledger.md" if os.path.exists("/app/error_ledger.md") else "error_ledger.md"
-    n = await memory_retriever.ingest_error_ledger(ledger_path)
-    logging.info(f"Error Ledger 已入库 ChromaDB：{n} 条条目。")
+    # ---- error_ledger.md → SQLite + ChromaDB 幂等入库（后台异步，不阻塞 startup）----
+    # 设计：SQLite 为唯一写入目标 → 再用 vector_sync 全量重建 ChromaDB
+    async def _ingest_ledger():
+        import re as _re
+        import hashlib as _hashlib
+        from sqlmodel import Session, select
+        from app.core.db import engine
+        from app.models.database import ErrorEntry
+        from app.services.vector_sync import vector_sync
+
+        ledger_path = "/app/error_ledger.md" if os.path.exists("/app/error_ledger.md") else "error_ledger.md"
+
+        if not os.path.exists(ledger_path):
+            logging.info("error_ledger.md 不存在，跳过迁移。")
+            # 仍然全量重建 ChromaDB（可能已有 SQLite 数据）
+            n = await vector_sync.full_rebuild_errors()
+            logging.info(f"ChromaDB 错题向量已重建：{n} 条。")
+            return
+
+        with open(ledger_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # ---- 关键词 → 标签推断 ----
+        _TAG_KEYWORDS = {
+            "docker": ["docker", "container", "容器", "dockerfile", "docker-compose", "镜像"],
+            "python": ["python", "pip", "pydantic", "numpy", "module", "importerror", "syntaxerror"],
+            "network": ["proxy", "代理", "网络", "http", "api", "502", "timeout", "超时"],
+            "database": ["sqlite", "chromadb", "数据库", "db", "unique", "constraint"],
+            "encoding": ["编码", "utf-8", "encoding", "乱码", "charset"],
+            "deployment": ["部署", "端口", "port", "deploy", "构建", "build"],
+            "asyncio": ["asyncio", "queue", "队列", "worker", "任务"],
+            "proxy": ["clash", "mihomo", "shadowsocks", "ss-2022", "订阅"],
+            "config": ["配置", "config", "env", "环境变量", "settings"],
+            "pdf": ["pdf", "pypdf", "pdfplumber"],
+            "llm": ["llm", "gemini", "模型", "model", "token"],
+        }
+
+        def _infer_tags(text: str) -> list:
+            text_lower = text.lower()
+            tags = set()
+            for tag, keywords in _TAG_KEYWORDS.items():
+                for kw in keywords:
+                    if kw.lower() in text_lower:
+                        tags.add(tag)
+                        break
+            return sorted(tags) if tags else ["general"]
+
+        field_pattern = _re.compile(r"-\s*\*\*(.+?)\*\*\s*[:：]\s*(.*?)(?=\n-\s*\*\*|\Z)", _re.DOTALL)
+        sections = _re.split(r"\n### ", content)
+        migrated, skipped = 0, 0
+
+        # ---- Step 1: MD → SQLite（单写）----
+        for raw in sections[1:]:
+            lines = raw.strip().split("\n")
+            raw_title = lines[0].strip()
+            body = "\n".join(lines[1:]).strip()
+            if not raw_title or not body:
+                continue
+
+            doc_id = _hashlib.md5(raw_title.encode("utf-8")).hexdigest()
+
+            with Session(engine) as session:
+                if session.get(ErrorEntry, doc_id):
+                    skipped += 1
+                    continue
+
+            title = _re.sub(r"^\d+\.\s*", "", raw_title)
+            fields = {}
+            for m in field_pattern.finditer(body):
+                fields[m.group(1).strip()] = m.group(2).strip()
+
+            context_parts = []
+            for k in ["问题描述", "发现途径", "原因分析"]:
+                if k in fields:
+                    context_parts.append(f"{k}: {fields[k]}")
+            ctx = "\n".join(context_parts) if context_parts else body
+
+            entry = ErrorEntry(
+                id=doc_id,
+                title=title,
+                context=ctx,
+                correction=fields.get("解决方案", ""),
+                prevention=fields.get("预防建议", ""),
+                tags=_infer_tags(raw_title + " " + body),
+                severity="info",
+                source="manual",
+            )
+            with Session(engine) as session:
+                session.add(entry)
+                session.commit()
+            migrated += 1
+
+        logging.info(f"Error Ledger → SQLite：迁移 {migrated} 条，跳过 {skipped} 条。")
+
+        # ---- Step 2: SQLite → ChromaDB 全量重建（唯一同步入口）----
+        n = await vector_sync.full_rebuild_errors()
+        logging.info(f"ChromaDB 错题向量已重建：{n} 条。")
+
+    _track(asyncio.create_task(_ingest_ledger()))
+
+    # ---- Phase 11 — 代码语义索引：启动时增量更新（零 LLM Token 消耗）----
+    from app.services.code_indexer import code_indexer
+    try:
+        _index_stats = await code_indexer.update_incremental()
+        logging.info(f"Code index updated on startup: {_index_stats}")
+    except Exception as _idx_err:
+        logging.warning(f"Code index startup update failed (non-fatal): {_idx_err}")
+
+    # 开发环境：后台定时文件监听（每 30 秒自动增量更新）
+    if settings.environment == "development":
+        _track(asyncio.create_task(code_indexer.start_file_watcher(interval=30.0)))
+        logging.info("Code index file watcher started (development mode).")
 
     yield  # ← 应用正常运行期间停在这里
 
