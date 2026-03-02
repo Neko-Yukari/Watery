@@ -178,6 +178,23 @@ Manager Agent 会在任务拆解时“按需”参考此类经验，以避免重
 
 ---
 
+## [2026-03-02] 前端会话与上传状态管理类
+
+### 1. 发送前引用未初始化变量导致消息不显示与停止按钮卡死
+- **问题描述**: 在聊天页面添加附件后发送消息，底部附件预览与消息显示异常；点击停止图标无反应；切换 session 后停止图标仍残留。
+- **发现途径**: 页面交互实测（发送后无用户消息气泡、停止按钮长期停留在 `● 停止`）。
+- **原因分析**:
+  1. `sendMessage` 在 `messageContent` 声明前执行 `_lastUserContent = messageContent`，触发 `ReferenceError`，导致后续渲染和状态回收逻辑未执行。
+  2. 拖拽上传路径调用了未定义的 `processFiles`，与文件选择器路径处理逻辑不一致，附件预览不稳定。
+  3. 会话切换（`loadChat/createNewChat`）未主动重置生成态，导致旧会话的停止按钮 UI 泄漏到新会话。
+- **解决方案**:
+  1. 先构建 `messageContent`，再保存 `_lastUserContent` 快照，消除变量时序错误。
+  2. 新增并复用 `processFiles(files)`，统一文件选择与拖拽上传入口。
+  3. 新增 `resetGenerationState()`，统一恢复 `_generating/_activeController` 和发送按钮 UI；在 `loadChat/createNewChat` 前执行 stop + reset。
+- **预防建议**: 对前端状态机类函数（上传/发送/中断/会话切换）建立统一“状态收敛函数”，并避免多入口重复实现同一业务流程。
+
+---
+
 ## 后续记录模版
 ### [日期] 错误类别简述
 - **问题描述**: ...

@@ -94,13 +94,41 @@ def delete_entry(entry_id: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 
+def reflect_entries(
+    min_entries: int = 3,
+    max_entries: int = 20,
+    archive_instead_of_delete: bool = True,
+    model: str = "",
+) -> dict:
+    """触发错题归纳总结，并归档/删除已解释原始错误。"""
+    try:
+        import httpx
+        payload = {
+            "min_entries": min_entries,
+            "max_entries": max_entries,
+            "archive_instead_of_delete": archive_instead_of_delete,
+        }
+        if model:
+            payload["model"] = model
+
+        resp = httpx.post(
+            f"{_API_BASE}/errors/reflect",
+            json=payload,
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return {"status": "success", **resp.json()}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 def main(params: dict) -> dict:
     """
     主入口函数。
 
     Args:
         params: {
-            "operation": "create" | "list" | "get" | "delete" | "search",
+            "operation": "create" | "list" | "get" | "delete" | "search" | "reflect",
             "entry_id": str,         # get/delete 必填
             "entry_data": dict,      # create 时必填
             "tags": str,             # list 时可选，逗号分隔
@@ -113,7 +141,7 @@ def main(params: dict) -> dict:
     """
     operation = params.get("operation")
     if not operation:
-        return {"status": "error", "message": "必须提供 operation 参数（create/list/get/delete/search）"}
+        return {"status": "error", "message": "必须提供 operation 参数（create/list/get/delete/search/reflect）"}
 
     operation = operation.lower()
     entry_id = params.get("entry_id")
@@ -150,10 +178,23 @@ def main(params: dict) -> dict:
             return {"status": "error", "message": "delete 操作必须提供 entry_id"}
         return delete_entry(entry_id)
 
+    elif operation == "reflect":
+        raw_archive = params.get("archive_instead_of_delete", True)
+        if isinstance(raw_archive, str):
+            archive_flag = raw_archive.strip().lower() not in {"0", "false", "no", "off"}
+        else:
+            archive_flag = bool(raw_archive)
+        return reflect_entries(
+            min_entries=int(params.get("min_entries", 3)),
+            max_entries=int(params.get("max_entries", 20)),
+            archive_instead_of_delete=archive_flag,
+            model=str(params.get("model", "")),
+        )
+
     else:
         return {
             "status": "error",
-            "message": f"未知操作: '{operation}'，支持 create / list / get / delete / search",
+            "message": f"未知操作: '{operation}'，支持 create / list / get / delete / search / reflect",
         }
 
 

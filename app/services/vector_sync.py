@@ -45,6 +45,8 @@ class VectorSyncService:
         correction: str,
         tags: List[str],
         severity: str = "warning",
+        entry_type: str = "raw",
+        status: str = "active",
     ) -> None:
         """单条错题 SQLite → ChromaDB 增量同步。"""
         try:
@@ -54,6 +56,8 @@ class VectorSyncService:
                 correction=correction,
                 tags=tags,
                 severity=severity,
+                entry_type=entry_type,
+                status=status,
             )
         except Exception as e:
             logger.warning(f"[VectorSync] sync_error_entry({entry_id}) failed: {e}")
@@ -91,8 +95,11 @@ class VectorSyncService:
                         "correction": e.correction or "",
                         "tags": e.tags or [],
                         "severity": e.severity or "warning",
+                        "entry_type": e.entry_type or "raw",
+                        "status": e.status or "active",
                     }
                     for e in entries
+                    if (e.status or "active") == "active"
                 ]
 
             # 2. 清空 ChromaDB collection 并重写
@@ -111,6 +118,8 @@ class VectorSyncService:
                     "tags": ",".join(d["tags"]) if d["tags"] else "",
                     "severity": d["severity"],
                     "entry_id": d["id"],
+                    "entry_type": d["entry_type"],
+                    "status": d["status"],
                 }
                 await self.retriever._run_sync(
                     col.add,

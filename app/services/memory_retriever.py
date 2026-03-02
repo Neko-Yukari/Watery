@@ -104,6 +104,8 @@ class MemoryRetriever:
         correction: str,
         tags: List[str],
         severity: str = "warning",
+        entry_type: str = "raw",
+        status: str = "active",
     ) -> None:
         """
         将错题写入 ChromaDB error_ledger_vector（带 tags metadata，Phase 8）。
@@ -115,6 +117,8 @@ class MemoryRetriever:
             "tags": ",".join(tags) if tags else "",
             "severity": severity,
             "entry_id": entry_id,
+            "entry_type": entry_type,
+            "status": status,
         }
         existing = await self._run_sync(self.error_ledger_col.get, ids=[entry_id])
         if existing["ids"]:
@@ -199,6 +203,8 @@ class MemoryRetriever:
                     "context": (results["documents"][0][i] if results["documents"] else ""),
                     "correction": meta.get("correction", ""),
                     "tags": [t for t in raw_tags.split(",") if t] if raw_tags else [],
+                    "entry_type": meta.get("entry_type", "raw"),
+                    "status": meta.get("status", "active"),
                 })
         return entries
 
@@ -239,6 +245,7 @@ class MemoryRetriever:
                 self.error_ledger_col.query,
                 query_texts=[task_description],
                 n_results=k,
+                where={"status": "active"},
             )
 
         # ---- 整理结果 ----

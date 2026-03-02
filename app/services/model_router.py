@@ -1,10 +1,10 @@
 import json
 import logging
 import httpx
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 from openai import AsyncOpenAI
 from app.core.config import settings
-from app.models.schemas import Message, ChatResponse, ToolCall, ToolCallFunction
+from app.models.schemas import Message, ChatResponse, ToolCall, ToolCallFunction, SSEEvent
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +243,216 @@ class ModelRouter:
         except Exception as e:
             logger.error(f"Error calling Volcengine API: {str(e)}")
             raise
+
+    async def generate_stream(
+        self,
+        messages: List[Message],
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",
+    ) -> AsyncGenerator[SSEEvent, None]:
+        """
+        统一流式生成入口（AsyncGenerator）。
+
+        yield 事件顺序：
+        1. text_delta  × N  — LLM 逐词输出（如果本轮有文本）
+        2. tool_start  × M  — LLM 决定调用工具（如果本轮有 tool_calls）
+        最终由调用方（routes.py /chat/stream）处理 tool_result 和 done。
+        """
+        provider, selected_model = self._select_model(model)
+        logger.info(f"[stream] Routing to provider={provider}, model={selected_model}")
+
+        if provider == "volcengine":
+            async for event in self._call_volcengine_stream(
+                messages, selected_model, temperature, max_tokens, tools, tool_choice
+            ):
+                yield event
+        elif provider == "gemini":
+            async for event in self._call_gemini_stream(
+                messages, selected_model, temperature, max_tokens, tools, tool_choice
+            ):
+                yield event
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+    async def _call_volcengine_stream(
+        self,
+        messages: List[Message],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",
+    ) -> AsyncGenerator[SSEEvent, None]:
+        """
+        火山引擎流式实现。
+        """
+        formatted_messages = self._format_messages(messages)
+        create_kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": formatted_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        if tools:
+            create_kwargs["tools"] = tools
+            create_kwargs["tool_choice"] = tool_choice
+            create_kwargs["stream_options"] = {"include_usage": True}
+
+        try:
+            stream = await self.volcengine_client.chat.completions.create(**create_kwargs)
+            
+            full_content = ""
+            tool_calls_buffer: Dict[int, Dict[str, Any]] = {}
+
+            async for chunk in stream:
+                if not chunk.choices:
+                    # 处理 usage (当 stream_options 开启时)
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        yield SSEEvent(event="__stream_done__", usage=chunk.usage.model_dump())
+                    continue
+
+                delta = chunk.choices[0].delta
+                
+                # 1. 处理文本增量
+                if delta.content:
+                    full_content += delta.content
+                    yield SSEEvent(event="text_delta", delta=delta.content)
+
+                # 2. 处理工具调用增量
+                if delta.tool_calls:
+                    for tc_chunk in delta.tool_calls:
+                        idx = tc_chunk.index
+                        if idx not in tool_calls_buffer:
+                            tool_calls_buffer[idx] = {
+                                "id": tc_chunk.id,
+                                "name": "",
+                                "arguments": ""
+                            }
+                            # 立即推送 tool_start 事件
+                            yield SSEEvent(
+                                event="tool_start",
+                                tool_name=tc_chunk.function.name,
+                                tool_call_id=tc_chunk.id,
+                                arguments="" # 初始为空，后续增量累加
+                            )
+                        
+                        if tc_chunk.function.name:
+                            tool_calls_buffer[idx]["name"] = tc_chunk.function.name
+                        if tc_chunk.function.arguments:
+                            tool_calls_buffer[idx]["arguments"] += tc_chunk.function.arguments
+                            # 可以根据需要推送 arguments 增量，这里简化为只在结束时或全量更新
+                            # 本方案对标 GitHub Copilot，在 tool_start 后，我们在 done 之后再处理 result
+
+                # 3. 检查是否结束
+                if chunk.choices[0].finish_reason:
+                    # 整理最终结果到 __stream_done__
+                    final_tool_calls = []
+                    for idx in sorted(tool_calls_buffer.keys()):
+                        info = tool_calls_buffer[idx]
+                        final_tool_calls.append(ToolCall(
+                            id=info["id"],
+                            type="function",
+                            function=ToolCallFunction(name=info["name"], arguments=info["arguments"])
+                        ))
+                    
+                    yield SSEEvent(
+                        event="__stream_done__",
+                        content=full_content,
+                        finish_reason=chunk.choices[0].finish_reason,
+                        tool_calls=final_tool_calls or None,
+                        # 如果没有 usage (比如 provider 不支持)，这里会是 None
+                    )
+
+        except Exception as e:
+            logger.error(f"[stream] Volcengine stream error: {e}")
+            yield SSEEvent(event="error", message=str(e))
+
+    async def _call_gemini_stream(
+        self,
+        messages: List[Message],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",
+    ) -> AsyncGenerator[SSEEvent, None]:
+        """
+        Gemini 流式实现。逻辑基本同上。
+        """
+        formatted_messages = self._format_messages(messages)
+        create_kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": formatted_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        if tools:
+            create_kwargs["tools"] = tools
+            create_kwargs["tool_choice"] = tool_choice
+            create_kwargs["stream_options"] = {"include_usage": True}
+
+        try:
+            stream = await self.gemini_client.chat.completions.create(**create_kwargs)
+            
+            full_content = ""
+            tool_calls_buffer: Dict[int, Dict[str, Any]] = {}
+
+            async for chunk in stream:
+                if not chunk.choices:
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        yield SSEEvent(event="__stream_done__", usage=chunk.usage.model_dump())
+                    continue
+
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    full_content += delta.content
+                    yield SSEEvent(event="text_delta", delta=delta.content)
+
+                if delta.tool_calls:
+                    for tc_chunk in delta.tool_calls:
+                        idx = getattr(tc_chunk, 'index', 0)
+                        if idx not in tool_calls_buffer:
+                            tool_calls_buffer[idx] = {
+                                "id": tc_chunk.id,
+                                "name": "",
+                                "arguments": ""
+                            }
+                            yield SSEEvent(
+                                event="tool_start",
+                                tool_name=tc_chunk.function.name,
+                                tool_call_id=tc_chunk.id,
+                                arguments=""
+                            )
+                        if tc_chunk.function.name:
+                            tool_calls_buffer[idx]["name"] = tc_chunk.function.name
+                        if tc_chunk.function.arguments:
+                            tool_calls_buffer[idx]["arguments"] += tc_chunk.function.arguments
+
+                if chunk.choices[0].finish_reason:
+                    final_tool_calls = []
+                    for idx in sorted(tool_calls_buffer.keys()):
+                        info = tool_calls_buffer[idx]
+                        final_tool_calls.append(ToolCall(
+                            id=info["id"],
+                            type="function",
+                            function=ToolCallFunction(name=info["name"], arguments=info["arguments"])
+                        ))
+                    
+                    yield SSEEvent(
+                        event="__stream_done__",
+                        content=full_content,
+                        finish_reason=chunk.choices[0].finish_reason,
+                        tool_calls=final_tool_calls or None,
+                    )
+
+        except Exception as e:
+            logger.error(f"[stream] Gemini stream error: {e}")
+            yield SSEEvent(event="error", message=str(e))
 
 # 全局单例
 model_router = ModelRouter()

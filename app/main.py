@@ -1,11 +1,14 @@
 import asyncio
+import json
 import logging
 import os
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Set
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import Body, FastAPI
+from fastapi.responses import HTMLResponse, StreamingResponse as _StreamingResponse
 
 from app.api.routes import router as api_router
 from app.core.config import settings
@@ -204,6 +207,107 @@ async def get_index():
 @app.get("/health", summary="健康检查")
 async def health_check():
     return {"status": "ok", "version": "0.2.0", "environment": settings.environment}
+
+
+@app.post("/v1/chat/completions", include_in_schema=True, summary="OpenAI 兼容端点（支持 stream=True）")
+async def openai_compatible_chat(body: dict = Body(...)):
+    """
+    标准 OpenAI ChatCompletion 兼容接口。
+    """
+    from app.services.model_router import model_router
+    from app.models.schemas import Message
+
+    raw_messages = body.get("messages", [])
+    model = body.get("model", "ark-code-latest")
+    stream = body.get("stream", False)
+    temperature = float(body.get("temperature", 0.7))
+    max_tokens = int(body.get("max_tokens", 2048))
+
+    messages = [
+        Message(role=m["role"], content=m.get("content"))
+        for m in raw_messages
+    ]
+
+    req_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+    created = int(time.time())
+
+    if stream:
+        async def _openai_stream():
+            try:
+                async for event in model_router.generate_stream(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                ):
+                    if event.event == "text_delta":
+                        chunk = {
+                            "id": req_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {"content": event.delta},
+                                "finish_reason": None
+                            }]
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                    elif event.event == "__stream_done__":
+                        # 发送结束 chunk
+                        final_chunk = {
+                            "id": req_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": model,
+                            "choices": [{
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": event.finish_reason or "stop"
+                            }]
+                        }
+                        yield f"data: {json.dumps(final_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+            except Exception as e:
+                logging.error(f"OpenAI compatible stream error: {e}")
+                err_chunk = {"error": {"message": str(e), "type": "server_error"}}
+                yield f"data: {json.dumps(err_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return _StreamingResponse(_openai_stream(), media_type="text/event-stream")
+    else:
+        # 非流式
+        resp = await model_router.generate(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return {
+            "id": req_id,
+            "object": "chat.completion",
+            "created": created,
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": resp.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        } for tc in resp.tool_calls
+                    ] if resp.tool_calls else None
+                },
+                "finish_reason": resp.finish_reason
+            }],
+            "usage": resp.usage
+        }
 
 
 if __name__ == "__main__":

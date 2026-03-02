@@ -1,0 +1,24 @@
+app/
+└── web/
+    ├── index.html
+    └── static/
+        └── js/
+            ├── app_bootstrap.js
+            ├── state/
+            │   ├── chat_store.js
+            │   └── session_state.js
+            ├── stream/
+            │   ├── sse_client.js
+            │   └── sse_parser.js
+            ├── ui/
+            │   ├── composer_controller.js
+            │   ├── message_renderer.js
+            │   ├── message_actions.js
+            │   └── sidebar_controller.js
+            ├── services/
+            │   ├── chat_api.js
+            │   ├── rollback_api.js
+            │   └── archive_api.js
+            └── utils/
+                ├── event_bus.js
+                └── safe_json.js

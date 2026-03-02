@@ -37,6 +37,10 @@ def _migrate_schema():
         ("errorentry",    "prevention",          "TEXT DEFAULT ''"),
         ("errorentry",    "hit_count",           "INTEGER DEFAULT 0"),
         ("errorentry",    "related_skill_ids",   "JSON DEFAULT '[]'"),
+        # Phase 13 — 错题反思归纳（raw / insight + 状态流转）
+        ("errorentry",    "entry_type",          "TEXT NOT NULL DEFAULT 'raw'"),
+        ("errorentry",    "status",              "TEXT NOT NULL DEFAULT 'active'"),
+        ("errorentry",    "summarized_from_ids", "JSON DEFAULT '[]'"),
         # Phase 9 — PDF 大文件处理
         ("pdfdocument",   "processed_chunks",    "INTEGER DEFAULT 0"),
         # Phase 11 — 代码语义索引（codesymbol 为新表，以下预留增量列）

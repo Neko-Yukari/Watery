@@ -4,6 +4,10 @@ services:
     image: ghcr.io/neko-yukari/watery:latest
     build:
       context: .
+      args:
+        HTTP_PROXY: http://host.docker.internal:7890
+        HTTPS_PROXY: http://host.docker.internal:7890
+        NO_PROXY: localhost,127.0.0.1
     container_name: watery_api
     ports:
       - "18000:18000"

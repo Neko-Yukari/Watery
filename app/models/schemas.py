@@ -349,6 +349,17 @@ class ErrorEntryCreate(BaseModel):
     related_skill_ids: List[str] = Field(default_factory=list, description="关联 Skill ID")
 
 
+class ErrorReflectRequest(BaseModel):
+    """手动触发错题归纳总结请求体。"""
+    min_entries: int = Field(3, ge=1, le=50, description="至少收集多少条 active raw 错题才触发归纳")
+    max_entries: int = Field(20, ge=1, le=200, description="本次最多参与归纳的错题条数")
+    archive_instead_of_delete: bool = Field(
+        True,
+        description="是否归档原始错题而非硬删除；true=标记 summarized，false=直接删除",
+    )
+    model: Optional[str] = Field(None, description="可选：指定用于归纳的模型")
+
+
 class ErrorEntryInfo(BaseModel):
     """错题摘要（列表页使用）。"""
     id: str
@@ -356,6 +367,8 @@ class ErrorEntryInfo(BaseModel):
     tags: List[str] = []
     severity: str = "warning"
     source: str = "manual"
+    entry_type: str = "raw"
+    status: str = "active"
     hit_count: int = 0
     created_at: Optional[str] = None
 
@@ -370,7 +383,10 @@ class ErrorEntryDetail(BaseModel):
     tags: List[str] = []
     severity: str = "warning"
     source: str = "manual"
+    entry_type: str = "raw"
+    status: str = "active"
     related_skill_ids: List[str] = []
+    summarized_from_ids: List[str] = []
     hit_count: int = 0
     created_at: Optional[str] = None
 
@@ -423,3 +439,50 @@ class IndexStatusResponse(BaseModel):
     total_symbols: int
     last_indexed_at: Optional[str] = None
     stale_files: int = Field(default=0, description="文件已变更但索引未更新的文件数")
+
+
+# ──────────────────────────────────────────────────────────────
+# Phase 12 — SSE 流式输出事件类型
+# ──────────────────────────────────────────────────────────────
+
+class SSEEventType(str):
+    """SSE 事件类型枚举常量。"""
+    TEXT_DELTA  = "text_delta"   # 文本增量块（逐词推送）
+    TOOL_START  = "tool_start"   # 工具调用开始（LLM 决定调用某工具）
+    TOOL_RESULT = "tool_result"  # 工具执行结果（工具执行完成）
+    DONE        = "done"         # 整轮对话完成信号
+    ERROR       = "error"        # 错误信号
+
+
+class SSEEvent(BaseModel):
+    """
+    SSE 单条事件数据结构。
+
+    event 类型说明：
+    - text_delta:   delta 字段包含本次新增文本片段（空字符串表示 LLM 暂停）
+    - tool_start:   tool_name + tool_call_id + arguments 字段有效
+    - tool_result:  tool_name + tool_call_id + result + ok 字段有效
+    - done:         content（完整拼接的最终文本）+ usage + finish_reason 有效
+    - __stream_done__: 内部同步事件，允许附带 tool_calls 供路由层继续执行
+    - error:        message 字段包含错误描述
+    """
+    event: str = Field(..., description="事件类型：text_delta / tool_start / tool_result / done / error")
+    # text_delta
+    delta: Optional[str] = Field(None, description="[text_delta] 本次新增文本片段")
+    # tool_start / tool_result 共用
+    tool_name: Optional[str] = Field(None, description="[tool_*] 工具名称")
+    tool_call_id: Optional[str] = Field(None, description="[tool_*] 工具调用 ID")
+    # tool_start
+    arguments: Optional[str] = Field(None, description="[tool_start] 工具参数 JSON 字符串")
+    # tool_result
+    result: Optional[Dict[str, Any]] = Field(None, description="[tool_result] 工具执行结果")
+    ok: Optional[bool] = Field(None, description="[tool_result] 执行是否成功")
+    # done
+    content: Optional[str] = Field(None, description="[done] 最终完整文本（所有 delta 拼接）")
+    usage: Optional[Dict[str, Any]] = Field(None, description="[done] token 用量统计")
+    finish_reason: Optional[str] = Field(None, description="[done] 完成原因：stop / tool_calls / length")
+    conversation_id: Optional[str] = Field(None, description="[done] 关联会话 ID")
+    tool_calls: Optional[List[ToolCall]] = Field(None, description="[__stream_done__] 本轮结构化工具调用列表")
+    # error
+    message: Optional[str] = Field(None, description="[error] 错误描述")
+    error: Optional[str] = Field(None, description="[error] 错误描述（兼容字段）")

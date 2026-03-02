@@ -2,13 +2,15 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime as _dt
 from typing import Any, Dict, List, Optional, Set
 
 import httpx
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Response, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.models.schemas import (
     ChatRequest,
@@ -20,6 +22,7 @@ from app.models.schemas import (
     DeepResearchRequest,
     DeepResearchResponse,
     ErrorEntryCreate,
+    ErrorReflectRequest,
     ImportMessagesRequest,
     IntentionRequest,
     Message,
@@ -28,6 +31,7 @@ from app.models.schemas import (
     PDFToSkillsRequest,
     SkillCreate,
     SkillUpdate,
+    SSEEvent,
 )
 from app.services.model_router import model_router
 from app.services.manager import manager_agent
@@ -41,7 +45,7 @@ from app.services.tool_registry import tool_registry
 from app.services.code_indexer import code_indexer  # Phase 11 代码语义索引
 from sqlmodel import Session, select, delete
 from app.core.db import engine
-from app.models.database import Conversation, ConversationMessage, CodeSymbol, ErrorEntry, PDFDocument, RuntimeSetting, Task, SkillMetadata
+from app.models.database import Conversation, ConversationMessage, CodeSymbol, ErrorEntry, PDFDocument, RolledBackMessage, RuntimeSetting, Task, SkillMetadata
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -308,6 +312,219 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/chat/stream", summary="流式聊天接口（SSE，支持 Tool Calling 中间步骤实时推送）")
+async def chat_stream_endpoint(request: ChatRequest):
+    """
+    与 POST /chat 功能相同，但以 SSE（Server-Sent Events）格式流式返回结果。
+    """
+    async def _event_generator():
+        try:
+            conv_id = request.conversation_id
+            messages = []
+            incoming_user_messages: list[Message] = []
+            
+            # --- 1. 加载历史 (DB 模式) ---
+            if conv_id:
+                with Session(engine) as session:
+                    conv = session.get(Conversation, conv_id)
+                    if not conv:
+                        # 自动创建
+                        conv = Conversation(id=conv_id, title="新对话")
+                        session.add(conv)
+                        session.commit()
+                        session.refresh(conv)
+                    
+                    # 加载最近的历史 (50条)
+                    q = select(ConversationMessage).where(ConversationMessage.conversation_id == conv_id).order_by(ConversationMessage.created_at.desc()).limit(50)
+                    history = list(session.exec(q).all())[::-1]
+                    for hm in history:
+                        parsed_tool_calls = None
+                        if hm.tool_calls_json:
+                            try:
+                                parsed_tool_calls = json.loads(hm.tool_calls_json)
+                            except Exception:
+                                parsed_tool_calls = None
+                        messages.append(Message(
+                            role=hm.role,
+                            content=hm.content,
+                            tool_calls=parsed_tool_calls,
+                            tool_call_id=hm.tool_call_id,
+                        ))
+
+            # --- 2. 注入当前消息 ---
+            if request.messages:
+                for req_msg in request.messages:
+                    if req_msg.role == "user":
+                        incoming_user_messages.append(req_msg)
+                        messages.append(req_msg)
+
+            # --- 3. 系统提示词注入 (Phase 10) ---
+            tools = tool_registry.get_tool_definitions()
+            messages_before_loop_len = len(messages)
+            
+            # --- 4. Tool Calling 循环 ---
+            final_content = ""
+            final_usage = {}
+            final_finish_reason = "stop"
+            
+            for round_idx in range(_MAX_TOOL_ROUNDS):
+                tools = tool_registry.get_tool_definitions()
+                round_messages = _truncate_messages(messages, max_tokens=128000)
+                
+                # 开始流式轮次
+                current_full_text = ""
+                current_tool_calls = []
+                round_finish_reason = "stop"
+
+                async for event in model_router.generate_stream(
+                    messages=round_messages,
+                    model=request.model,
+                    temperature=request.temperature or 0.7,
+                    max_tokens=request.max_tokens or 2048,
+                    tools=tools
+                ):
+                    if event.event == "text_delta":
+                        current_full_text += event.delta
+                        yield f"data: {event.model_dump_json(exclude_none=True)}\n\n"
+                    
+                    elif event.event == "tool_start":
+                        # 直接转发给前端
+                        yield f"data: {event.model_dump_json(exclude_none=True)}\n\n"
+
+                    elif event.event == "error":
+                        final_finish_reason = "error"
+                        round_finish_reason = "error"
+                        err_msg = event.message or event.error or "stream provider error"
+                        err_event = SSEEvent(event="error", message=err_msg, error=err_msg)
+                        yield f"data: {err_event.model_dump_json(exclude_none=True)}\n\n"
+                        break
+                    
+                    elif event.event == "__stream_done__":
+                        # 这里的 __stream_done__ 仅作为内部同步点
+                        if event.content:
+                            current_full_text = event.content # 确保同步完整文本
+                        if event.tool_calls:
+                            current_tool_calls = event.tool_calls
+                        if event.usage:
+                            # 累加 usage（兼容 provider 返回的嵌套 dict）
+                            for k, v in event.usage.items():
+                                if isinstance(v, (int, float)):
+                                    prev = final_usage.get(k, 0)
+                                    if isinstance(prev, (int, float)):
+                                        final_usage[k] = prev + v
+                                    else:
+                                        final_usage[k] = v
+                                elif isinstance(v, dict):
+                                    prev_dict = final_usage.get(k, {})
+                                    if not isinstance(prev_dict, dict):
+                                        prev_dict = {}
+                                    merged = dict(prev_dict)
+                                    for sub_k, sub_v in v.items():
+                                        if isinstance(sub_v, (int, float)) and isinstance(merged.get(sub_k, 0), (int, float)):
+                                            merged[sub_k] = merged.get(sub_k, 0) + sub_v
+                                        else:
+                                            merged[sub_k] = sub_v
+                                    final_usage[k] = merged
+                                else:
+                                    final_usage[k] = v
+                        final_finish_reason = event.finish_reason or "stop"
+                        round_finish_reason = event.finish_reason or "stop"
+                
+                # 轮次结束：把本轮 assistant 内容与 tool_calls 同步进消息历史
+                final_content = current_full_text or final_content
+                messages.append(
+                    Message(
+                        role="assistant",
+                        content=current_full_text,
+                        tool_calls=current_tool_calls or None,
+                    )
+                )
+
+                if round_finish_reason == "error":
+                    break
+
+                if round_finish_reason == "tool_calls" and current_tool_calls:
+                    # 执行工具并推送结果
+                    for tc in current_tool_calls:
+                        skill = tool_registry.get_tool_by_name(tc.function.name)
+                        if skill:
+                            try:
+                                params = json.loads(tc.function.arguments)
+                            except json.JSONDecodeError:
+                                params = {}
+                            result = await skill_executor.run(
+                                language=skill.language,
+                                entrypoint=skill.entrypoint,
+                                params=params,
+                            )
+                        else:
+                            result = {
+                                "status": "error",
+                                "message": f"Tool '{tc.function.name}' not found in skill registry.",
+                            }
+                        # 推送 tool_result 事件给前端
+                        tool_event = SSEEvent(
+                            event='tool_result',
+                            tool_name=tc.function.name,
+                            tool_call_id=tc.id,
+                            result=result,
+                            ok=(result.get('status') == 'success')
+                        )
+                        yield f"data: {tool_event.model_dump_json(exclude_none=True)}\n\n"
+                        
+                        messages.append(Message(
+                            role="tool",
+                            tool_call_id=tc.id,
+                            content=json.dumps(result, ensure_ascii=False)
+                        ))
+                    # 继续下一轮循环
+                    continue
+                else:
+                    # 结束对话
+                    break
+            
+            # --- 5. 持久化 (DB 模式) ---
+            if conv_id:
+                _persist_chat_turn(
+                    conv_id=conv_id,
+                    new_messages=incoming_user_messages + list(messages[messages_before_loop_len:])
+                )
+
+            # usage 单独事件（可选）
+            if final_usage:
+                usage_event = SSEEvent(
+                    event='usage',
+                    usage=final_usage,
+                    conversation_id=conv_id,
+                )
+                yield f"data: {usage_event.model_dump_json(exclude_none=True)}\n\n"
+            
+            # 发送 done
+            done_event = SSEEvent(
+                event='done',
+                content=final_content,
+                usage=final_usage,
+                finish_reason=final_finish_reason,
+                conversation_id=conv_id
+            )
+            yield f"data: {done_event.model_dump_json(exclude_none=True)}\n\n"
+
+        except Exception as e:
+            logger.error(f"chat_stream_endpoint error: {e}")
+            err_msg = str(e)
+            yield f"data: {SSEEvent(event='error', message=err_msg, error=err_msg).model_dump_json(exclude_none=True)}\n\n"
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        },
+    )
+
+
 # ---- Phase 7 辅助函数 ----
 
 def _estimate_tokens(text: str) -> int:
@@ -466,6 +683,20 @@ async def upload_chat_attachment(file: UploadFile = File(...)):
 
     # ── PDF ──────────────────────────────────────────────────
     if content_type == "application/pdf" or ext == ".pdf":
+        # ── 落盘到 /app/data/pdfs/（让 pdf_extract_text 等技能可以直接引用路径）
+        from app.core.config import settings as _cfg
+        pdfs_dir = os.path.join(_cfg.data_dir, "pdfs")
+        os.makedirs(pdfs_dir, exist_ok=True)
+        saved_path = os.path.join(pdfs_dir, filename)
+        try:
+            with open(saved_path, "wb") as f:
+                f.write(data)
+            logger.info(f"PDF saved to disk: {saved_path}")
+        except Exception as e:
+            logger.warning(f"PDF save to disk failed (will still extract text): {e}")
+            saved_path = None
+
+        # ── 提取预览文本（供前端在消息中内嵌，前 30000 字）
         try:
             import pdfplumber
             pages_text: List[str] = []
@@ -477,11 +708,18 @@ async def upload_chat_attachment(file: UploadFile = File(...)):
             text = "\n\n".join(pages_text)
         except Exception as e:
             logger.error(f"PDF extraction failed for '{filename}': {e}")
-            raise HTTPException(status_code=422, detail=f"PDF 解析失败：{e}")
+            # 文件已落盘，只是提取失败；返回路径让 AI 用技能读取
+            result: dict = {"type": "text", "name": filename, "content": f"（文本提取失败：{e}，请使用 pdf_extract_text 技能读取文件）"}
+            if saved_path:
+                result["file_path"] = saved_path
+            return result
         _MAX_CHARS = 30_000
         if len(text) > _MAX_CHARS:
-            text = text[:_MAX_CHARS] + "\n\n…（内容过长，已截断至前 30000 字符）"
-        return {"type": "text", "name": filename, "content": text}
+            text = text[:_MAX_CHARS] + "\n\n…（内容过长，已截断至前 30000 字符，完整内容请使用 pdf_extract_text 技能）"
+        result = {"type": "text", "name": filename, "content": text}
+        if saved_path:
+            result["file_path"] = saved_path
+        return result
 
     # ── Word (.docx) ─────────────────────────────────────────
     if ext == ".docx" or content_type in (
@@ -697,6 +935,172 @@ async def delete_conversation(conv_id: str, hard: bool = False):
             action = "archived"
         session.commit()
     return {"status": action, "conversation_id": conv_id}
+
+
+@router.delete("/conversations/{conv_id}/rollback", summary="回滚对话到最后一条用户消息前")
+async def rollback_conversation(conv_id: str):
+    """
+    回滚对话：删除最后一条用户消息以及该消息后的所有响应，
+    同时将被删除的内容归档到 RolledBackMessage 表供「回收站」查看。
+    
+    返回：
+    - rolled_back: 删除的消息数
+    - restored_content: 被删除的最后用户消息内容（供前端恢复到输入框）
+    - archive_id: 归档记录 ID
+    """
+    from datetime import datetime as _dt
+    with Session(engine) as session:
+        conv = session.get(Conversation, conv_id)
+        if not conv:
+            raise HTTPException(status_code=404, detail=f"Conversation '{conv_id}' not found.")
+        
+        # 查找最后一条用户消息
+        all_msgs = session.exec(
+            select(ConversationMessage)
+            .where(ConversationMessage.conversation_id == conv_id)
+            .order_by(ConversationMessage.seq.asc())
+        ).all()
+        
+        if not all_msgs:
+            return {"rolled_back": 0, "restored_content": ""}
+        
+        # 找到最后一条用户消息的索引
+        last_user_idx = -1
+        for i in range(len(all_msgs) - 1, -1, -1):
+            if all_msgs[i].role == 'user':
+                last_user_idx = i
+                break
+        
+        if last_user_idx < 0:
+            return {"rolled_back": 0, "restored_content": ""}
+        
+        # 提取被回滚的内容
+        user_content = all_msgs[last_user_idx].content or ""
+        assistant_parts = []
+        tool_calls_parts = []
+        for m in all_msgs[last_user_idx + 1:]:
+            if m.role == 'assistant' and m.content:
+                assistant_parts.append(m.content)
+            if m.tool_calls_json:
+                tool_calls_parts.append(m.tool_calls_json)
+        
+        # 归档到 RolledBackMessage 表
+        archive = RolledBackMessage(
+            conversation_id=conv_id,
+            conversation_title=conv.title or "",
+            user_content=user_content,
+            assistant_content="\n---\n".join(assistant_parts),
+            model=conv.model or "",
+            tool_calls_summary="; ".join(tool_calls_parts)[:2000] if tool_calls_parts else "",
+        )
+        session.add(archive)
+        
+        # 删除该用户消息及其后的所有消息
+        msgs_to_delete = all_msgs[last_user_idx:]
+        for m in msgs_to_delete:
+            session.delete(m)
+        
+        conv.updated_at = _dt.utcnow()
+        session.add(conv)
+        session.commit()
+        session.refresh(archive)
+    
+    return {
+        "rolled_back": len(msgs_to_delete),
+        "restored_content": user_content,
+        "archive_id": archive.id,
+    }
+
+
+# ============================================================
+# 回收站（Rolled-back Messages Archive）CRUD
+# ============================================================
+
+@router.get("/rollback-archive", summary="列出所有归档的回滚消息")
+async def list_rollback_archive():
+    """获取所有被回滚归档的消息，按时间倒序排列。供前端「回收站」面板展示。"""
+    with Session(engine) as session:
+        items = session.exec(
+            select(RolledBackMessage).order_by(RolledBackMessage.created_at.desc())
+        ).all()
+        return [
+            {
+                "id": item.id,
+                "conversation_id": item.conversation_id,
+                "conversation_title": item.conversation_title,
+                "user_content": item.user_content[:200] if item.user_content else "",
+                "assistant_content": item.assistant_content[:300] if item.assistant_content else "",
+                "model": item.model,
+                "annotation": item.annotation,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+            }
+            for item in items
+        ]
+
+
+@router.get("/rollback-archive/{archive_id}", summary="获取单条归档详情")
+async def get_rollback_archive_detail(archive_id: str):
+    """获取单条归档记录的完整内容（不截断）。"""
+    with Session(engine) as session:
+        item = session.get(RolledBackMessage, archive_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Archive entry not found.")
+        return {
+            "id": item.id,
+            "conversation_id": item.conversation_id,
+            "conversation_title": item.conversation_title,
+            "user_content": item.user_content,
+            "assistant_content": item.assistant_content,
+            "model": item.model,
+            "annotation": item.annotation,
+            "tool_calls_summary": item.tool_calls_summary,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        }
+
+
+@router.patch("/rollback-archive/{archive_id}/annotate", summary="为归档消息添加/更新批注")
+async def annotate_rollback_archive(archive_id: str, request: dict):
+    """
+    为某条回滚归档添加批注。
+
+    Body: ``{ "annotation": "这里回复的代码逻辑有误，应该用递归而非循环" }``
+    """
+    annotation = request.get("annotation", "")
+    with Session(engine) as session:
+        item = session.get(RolledBackMessage, archive_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Archive entry not found.")
+        item.annotation = annotation
+        session.add(item)
+        session.commit()
+    return {"status": "updated", "id": archive_id}
+
+
+@router.delete("/rollback-archive/{archive_id}", summary="删除单条归档")
+async def delete_rollback_archive(archive_id: str):
+    """删除一条归档记录。"""
+    with Session(engine) as session:
+        item = session.get(RolledBackMessage, archive_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Archive entry not found.")
+        session.delete(item)
+        session.commit()
+    return {"status": "deleted", "id": archive_id}
+
+
+@router.delete("/rollback-archive", summary="清空所有归档（每日总结后调用）")
+async def clear_rollback_archive():
+    """
+    清空所有回滚归档记录。通常在每日总结任务完成后调用。
+    返回被清除的记录数。
+    """
+    with Session(engine) as session:
+        items = session.exec(select(RolledBackMessage)).all()
+        count = len(items)
+        for item in items:
+            session.delete(item)
+        session.commit()
+    return {"status": "cleared", "deleted_count": count}
 
 
 @router.post("/conversations/{conv_id}/import", status_code=201, summary="批量导入历史消息（localStorage 迁移）")
@@ -1437,6 +1841,9 @@ async def create_error_entry(request: ErrorEntryCreate):
         severity=request.severity,
         source=request.source,
         related_skill_ids=request.related_skill_ids,
+        entry_type="raw",
+        status="active",
+        summarized_from_ids=[],
     )
     with Session(engine) as session:
         session.add(entry)
@@ -1451,6 +1858,8 @@ async def create_error_entry(request: ErrorEntryCreate):
         correction=request.correction,
         tags=request.tags,
         severity=request.severity,
+        entry_type="raw",
+        status="active",
     ))
     return {"id": entry_id, "title": request.title, "tags": request.tags}
 
@@ -1460,6 +1869,8 @@ async def list_error_entries(
     tags: Optional[str] = None,
     search: Optional[str] = None,
     severity: Optional[str] = None,
+    status: Optional[str] = "active",
+    entry_type: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ):
@@ -1484,6 +1895,12 @@ async def list_error_entries(
         if severity:
             result = [e for e in result if e.severity == severity]
 
+        if status:
+            result = [e for e in result if (e.status or "active") == status]
+
+        if entry_type:
+            result = [e for e in result if (e.entry_type or "raw") == entry_type]
+
         if search:
             kw = search.lower()
             result = [e for e in result if kw in (e.title or "").lower() or kw in (e.context or "").lower()]
@@ -1501,6 +1918,8 @@ async def list_error_entries(
                 "tags": e.tags or [],
                 "severity": e.severity,
                 "source": e.source,
+                "entry_type": e.entry_type or "raw",
+                "status": e.status or "active",
                 "hit_count": e.hit_count or 0,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
             }
@@ -1542,11 +1961,168 @@ async def get_error_entry(entry_id: str):
             "tags": entry.tags or [],
             "severity": entry.severity,
             "source": entry.source,
+            "entry_type": entry.entry_type or "raw",
+            "status": entry.status or "active",
             "related_skill_ids": entry.related_skill_ids or [],
+            "summarized_from_ids": entry.summarized_from_ids or [],
             "hit_count": entry.hit_count or 0,
             "created_at": entry.created_at.isoformat() if entry.created_at else None,
         }
     return data
+
+
+def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """从 LLM 输出中提取 JSON 对象。"""
+    if not text:
+        return None
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return None
+    try:
+        obj = json.loads(match.group(0))
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+@router.post("/errors/reflect", summary="触发错题归纳总结，并归档/删除已解释原始错误")
+async def reflect_error_entries(request: ErrorReflectRequest = Body(default_factory=ErrorReflectRequest)):
+    """
+    手动触发错题反思：
+    1) 从 active + raw 错题中抽取批次
+    2) 调用 LLM 提炼深层原因与原则（生成 insight 条目）
+    3) 对已解释的 raw 进行归档（summarized）或硬删除
+    """
+    with Session(engine) as session:
+        candidates = session.exec(
+            select(ErrorEntry)
+            .where(ErrorEntry.entry_type == "raw")
+            .where(ErrorEntry.status == "active")
+            .order_by(ErrorEntry.created_at.asc())
+        ).all()
+
+    if len(candidates) < request.min_entries:
+        return {
+            "status": "skipped",
+            "reason": "not_enough_active_raw_entries",
+            "active_raw_count": len(candidates),
+            "required": request.min_entries,
+        }
+
+    candidates = candidates[: request.max_entries]
+    source_ids = [e.id for e in candidates]
+    packed_entries = [
+        {
+            "id": e.id,
+            "title": e.title,
+            "context": e.context,
+            "correction": e.correction,
+            "prevention": e.prevention,
+            "tags": e.tags or [],
+            "severity": e.severity,
+        }
+        for e in candidates
+    ]
+
+    system_prompt = (
+        "你是资深架构复盘专家。请基于一批错误记录提炼系统级深层原因，而不是步骤级修复说明。"
+        "输出必须是 JSON 对象，格式为："
+        "{\"insights\":[{\"title\":str,\"root_cause\":str,\"principle\":str,\"representative_example\":str,\"tags\":[str],\"severity\":\"critical|warning|info\"}]}。"
+        "禁止输出 markdown 代码块或其他说明文字。"
+    )
+    user_prompt = (
+        "请对以下错误记录进行归纳，总结 1-5 条高价值洞察。"
+        "每条洞察要强调可迁移的系统性原因和工程原则。\n\n"
+        f"错误记录：\n{json.dumps(packed_entries, ensure_ascii=False)}"
+    )
+
+    llm_resp = await model_router.generate(
+        messages=[
+            Message(role="system", content=system_prompt),
+            Message(role="user", content=user_prompt),
+        ],
+        model=request.model,
+        temperature=0.2,
+        max_tokens=1600,
+    )
+    parsed = _extract_json_object(llm_resp.content or "")
+    if not parsed or not isinstance(parsed.get("insights"), list) or not parsed["insights"]:
+        raise HTTPException(status_code=422, detail="LLM reflection output is invalid or empty.")
+
+    created_insights: List[Dict[str, Any]] = []
+    with Session(engine) as session:
+        for item in parsed["insights"]:
+            tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+            insight = ErrorEntry(
+                title=(item.get("title") or "系统性错误洞察").strip(),
+                context=(item.get("root_cause") or "").strip(),
+                correction=(item.get("principle") or "").strip(),
+                prevention=(item.get("representative_example") or "").strip(),
+                tags=[str(t).strip() for t in tags if str(t).strip()],
+                severity=(item.get("severity") or "warning").strip(),
+                source="reflection",
+                related_skill_ids=[],
+                entry_type="insight",
+                status="active",
+                summarized_from_ids=source_ids,
+            )
+            session.add(insight)
+            session.flush()
+            created_insights.append({
+                "id": insight.id,
+                "title": insight.title,
+                "context": insight.context,
+                "correction": insight.correction,
+                "tags": insight.tags or [],
+                "severity": insight.severity,
+            })
+
+        if request.archive_instead_of_delete:
+            for src_id in source_ids:
+                src = session.get(ErrorEntry, src_id)
+                if src:
+                    src.status = "summarized"
+        else:
+            for src_id in source_ids:
+                src = session.get(ErrorEntry, src_id)
+                if src:
+                    session.delete(src)
+
+        session.commit()
+
+    # 向量层：新增 insight；移除被总结的 raw（避免重复检索）
+    await asyncio.gather(*[
+        vector_sync.sync_error_entry(
+            entry_id=i["id"],
+            context=i["context"],
+            correction=i["correction"],
+            tags=i["tags"],
+            severity=i["severity"],
+            entry_type="insight",
+            status="active",
+        )
+        for i in created_insights
+    ])
+    await asyncio.gather(*[
+        vector_sync.remove_error_entry(src_id)
+        for src_id in source_ids
+    ])
+
+    return {
+        "status": "ok",
+        "source_entries": len(source_ids),
+        "insights_created": len(created_insights),
+        "source_action": "archived" if request.archive_instead_of_delete else "deleted",
+        "source_ids": source_ids,
+        "insight_ids": [i["id"] for i in created_insights],
+    }
 
 
 @router.delete("/errors/entries/{entry_id}", summary="删除错题")

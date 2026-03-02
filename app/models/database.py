@@ -213,6 +213,19 @@ class ErrorEntry(SQLModel, table=True):
         sa_column=Column(JSON),
         description="关联的 Skill ID 数组",
     )
+    entry_type: str = Field(
+        default="raw",
+        description="条目类型：raw（原始错误）/ insight（归纳洞察）",
+    )
+    status: str = Field(
+        default="active",
+        description="状态：active（生效）/ summarized（已被归纳）",
+    )
+    summarized_from_ids: List[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description="仅 insight 使用：该洞察由哪些 raw entry_id 归纳而来",
+    )
     hit_count: int = Field(
         default=0,
         description="被 Worker 命中并注入上下文的次数",
@@ -224,6 +237,64 @@ class ErrorEntry(SQLModel, table=True):
 
 # ============================================================
 # Phase 11 — 代码语义索引
+# ============================================================
+
+
+# ============================================================
+# Phase 12 — 回滚消息归档（回收站）
+# ============================================================
+
+class RolledBackMessage(SQLModel, table=True):
+    """
+    回滚消息归档。当用户对 AI 回答不满意，触发 Retry 时，
+    被回滚的用户消息 + AI 回复将被归档到这张表中。
+
+    用途：
+    - 在 Web UI「回收站」面板查看被退回的对话
+    - 用户可添加批注（annotation），说明为什么对 AI 回复不满意
+    - 每日总结任务可读取这些归档条目，分析 AI 的常见失误模式
+    - 总结完成后，调用清空接口删除已处理的归档
+    """
+    id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+    )
+    conversation_id: str = Field(
+        index=True,
+        description="原始对话 ID",
+    )
+    conversation_title: str = Field(
+        default="",
+        description="原始对话标题（冗余存储，归档后对话可能被删除）",
+    )
+    user_content: str = Field(
+        default="",
+        description="被回滚的用户消息内容",
+    )
+    assistant_content: str = Field(
+        default="",
+        description="被回滚的 AI 回复内容",
+    )
+    model: str = Field(
+        default="",
+        description="生成回复所使用的模型",
+    )
+    annotation: str = Field(
+        default="",
+        description="用户批注：为什么对这次回复不满意",
+    )
+    tool_calls_summary: str = Field(
+        default="",
+        description="本轮涉及的工具调用摘要（JSON 字符串）",
+    )
+    created_at: Optional[datetime] = Field(
+        default_factory=datetime.utcnow,
+        description="归档时间",
+    )
+
+
+# ============================================================
+# Phase 11 — 代码语义索引 (CodeSymbol)
 # ============================================================
 
 class CodeSymbol(SQLModel, table=True):

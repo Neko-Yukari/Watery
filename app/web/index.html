@@ -385,6 +385,129 @@
             cursor: not-allowed;
         }
 
+        /* 停止按钮（Tool Calling 中断） */
+        .send-btn.stopping {
+            background-color: #ff4d4f;
+            width: 54px;
+            height: 54px;
+        }
+        .send-btn.stopping:hover {
+            background-color: #ff7875;
+        }
+
+        /* 消息操作栏 */
+        .msg-action-bar {
+            display: flex; gap: 6px; margin-top: 10px; align-items: center;
+            opacity: 0; transition: opacity 0.2s ease;
+            padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        .message.assistant:hover .msg-action-bar,
+        .message.assistant:last-of-type .msg-action-bar {
+            opacity: 1;
+        }
+
+        .msg-action-btn {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 3px 8px; border: 1px solid #ddd; border-radius: 5px;
+            background: white; color: #555; font-size: 11px; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .msg-action-btn:hover {
+            background: #e8f0fe; border-color: var(--primary-color); color: var(--primary-color);
+        }
+
+        /* 已停止徽章 */
+        .stopped-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            background: #fff3cd; color: #856404; font-size: 11px; font-weight: 600;
+            margin-left: 6px;
+        }
+
+        /* 停止按钮状态 */
+        .send-btn.stopping {
+            background-color: #f44336;
+            width: 54px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .send-btn.stopping:hover {
+            background-color: #d32f2f;
+        }
+
+        /* 消息操作栏 */
+        .msg-action-bar {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            font-size: 12px;
+        }
+        .message.assistant:hover .msg-action-bar,
+        .message.assistant:last-of-type .msg-action-bar {
+            opacity: 1;
+        }
+
+        .msg-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 4px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            color: #555;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+        .msg-action-btn:hover {
+            background: #e8f0fe;
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+        .msg-action-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            background: #f5f5f5;
+            border-color: #e0e0e0;
+            color: #999;
+        }
+
+        /* Stopped badge */
+        .stopped-badge {
+            display: inline-block;
+            background: #fff3cd;
+            color: #856404;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+            font-weight: 500;
+        }
+
+        /* 拖放高亮状态 */
+        .chat-input-container.drag-over {
+            background: #e8f4ff;
+            transition: background 0.15s;
+        }
+        .chat-input-container.drag-over .chat-input-wrapper {
+            outline: 2px dashed var(--primary-color);
+            outline-offset: 2px;
+            border-radius: 12px;
+        }
+        .drag-over-hint {
+            display: none;
+            text-align: center;
+            color: var(--primary-color);
+            font-size: 13px;
+            padding: 2px 0 6px;
+            pointer-events: none;
+        }
+        .chat-input-container.drag-over .drag-over-hint { display: block; }
+
         /* ── 附件上传 UI ─────────────────────────────────────────── */
         .attach-btn {
             width: 42px;
@@ -487,6 +610,18 @@
         .tool-call-card.error .tool-call-header {
             color: #d32f2f;
         }
+        .tool-call-card.pending {
+            border-left-color: #ffc107;
+            background: #fff9e6;
+        }
+        .tool-call-card.success {
+            border-left-color: #4caf50;
+            background: #f0fff0;
+        }
+        .stream-text {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
         .tool-call-result {
             color: #555;
             word-break: break-all;
@@ -545,6 +680,88 @@
         .rc-status.completed { background: #d4edda; color: #155724; }
         .rc-status.failed { background: #f8d7da; color: #721c24; }
         .rc-status.pending { background: #e2e3e5; color: #383d41; }
+
+        /* ── 回收站卡片样式 ── */
+        .archive-card {
+            border: 1px solid #f0d0d0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            background: #fff8f8;
+            transition: box-shadow 0.15s;
+            cursor: pointer;
+        }
+        .archive-card:hover { box-shadow: 0 1px 6px rgba(220,53,69,0.15); }
+        .archive-card .ac-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .archive-card .ac-title {
+            font-weight: 600;
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 70%;
+        }
+        .archive-card .ac-time {
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+        .archive-card .ac-user {
+            color: var(--primary-color);
+            font-size: 11px;
+            margin-bottom: 3px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .archive-card .ac-assistant {
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+        .archive-card .ac-annotation {
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: #ad6800;
+            margin-top: 4px;
+        }
+        .archive-card .ac-annotation:empty { display: none; }
+        .archive-card .ac-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
+        }
+        .archive-card .ac-actions button {
+            flex: 1;
+            padding: 3px 6px;
+            font-size: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .archive-card .ac-actions button:hover { background: #f3f4f6; }
+        .archive-card .ac-actions button.danger { color: #dc3545; border-color: #f5c6cb; }
+        .archive-card .ac-actions button.danger:hover { background: #f8d7da; }
+        .archive-empty {
+            text-align: center;
+            color: var(--text-secondary);
+            padding-top: 20px;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -604,6 +821,8 @@
         </div>
 
         <div class="chat-input-container">
+            <!-- 拖放提示 -->
+            <div class="drag-over-hint">📎 松开鼠标添加附件</div>
             <!-- 附件预览区 -->
             <div id="attachmentPreviewArea" class="attachment-preview-area"></div>
             <!-- 输入行 -->
@@ -618,7 +837,7 @@
                     </svg>
                 </button>
                 <textarea class="chat-input" id="userInput" placeholder="输入消息，可附加图片/PDF/文档..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
-                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                <button class="send-btn" id="sendBtn" onclick="if (_generating) stopGeneration(); else sendMessage()">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -638,6 +857,7 @@
             <button class="tab-btn active" id="tab-tasks" onclick="switchTab('tasks')">📋 任务</button>
             <button class="tab-btn" id="tab-research" onclick="switchTab('research')">🔬 研究</button>
             <button class="tab-btn" id="tab-code" onclick="switchTab('code')">💻 代码</button>
+            <button class="tab-btn" id="tab-archive" onclick="switchTab('archive')">🗑️ 回收站</button>
         </div>
         <!-- 任务面板 -->
         <div class="tab-panel active" id="panel-tasks">
@@ -660,6 +880,14 @@
                 <button onclick="refreshCode()" style="flex:0;padding:5px 8px;background:#6c757d;">🔄</button>
             </div>
             <div id="codeList"><div style="text-align:center;color:var(--text-secondary);padding-top:20px;">暂无代码任务</div></div>
+        </div>
+        <!-- 回收站面板 -->
+        <div class="tab-panel" id="panel-archive">
+            <div class="panel-action-bar">
+                <button onclick="refreshArchive()" style="background:#6c757d;">🔄 刷新</button>
+                <button onclick="clearAllArchive()" style="background:#dc3545;">🗑️ 清空全部</button>
+            </div>
+            <div id="archiveList"><div class="archive-empty">暂无被回滚的对话</div></div>
         </div>
     </div>
 
@@ -685,6 +913,7 @@
         const chatTitle = document.getElementById('chatTitle');
         const taskList = document.getElementById('taskList');
         const intentionBadge = document.getElementById('intentionBadge');
+        const SEND_BTN_DEFAULT_HTML = sendBtn.innerHTML;
 
         let isIntentionMode = false;
 
@@ -732,7 +961,12 @@
                                 <option value="warning">🟡 Warning</option>
                                 <option value="info">🔵 Info</option>
                             </select>
+                            <button id="errorReflectBtn" onclick="triggerErrorReflection()"
+                                style="padding:8px 12px;border:none;border-radius:6px;background:#4a90d9;color:#fff;font-size:13px;cursor:pointer;">
+                                🧠 触发总结
+                            </button>
                         </div>
+                        <div id="errorReflectStatus" style="margin:-4px 0 10px 0;font-size:12px;color:#666;"></div>
                         <div id="errorTagCloud" style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;min-height:28px;"></div>
                         <div id="errorList" style="max-height:62vh;overflow-y:auto;">加载中...</div>
                     `;
@@ -906,6 +1140,56 @@
                 `;
             } catch(err) {
                 console.error('showErrorDetail failed:', err);
+            }
+        }
+
+        async function triggerErrorReflection() {
+            const btn = document.getElementById('errorReflectBtn');
+            const statusEl = document.getElementById('errorReflectStatus');
+            if (!btn || !statusEl) return;
+
+            if (!confirm('将触发大模型对 active 原始错题进行归纳总结，并归档已解释记录。是否继续？')) {
+                return;
+            }
+
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            statusEl.style.color = '#666';
+            statusEl.textContent = '总结中，请稍候...';
+
+            try {
+                const res = await fetch('/api/v1/errors/reflect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        min_entries: 3,
+                        max_entries: 20,
+                        archive_instead_of_delete: true,
+                    }),
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.detail || data.message || '触发失败');
+                }
+
+                if (data.status === 'skipped') {
+                    statusEl.style.color = '#b08800';
+                    statusEl.textContent = `已跳过：active 原始错题不足（当前 ${data.active_raw_count} / 需要 ${data.required}）`;
+                } else {
+                    statusEl.style.color = '#22863a';
+                    statusEl.textContent = `完成：归纳 ${data.source_entries} 条，新增 ${data.insights_created} 条洞察，源记录已${data.source_action === 'archived' ? '归档' : '删除'}`;
+                }
+
+                selectedErrorTags.clear();
+                await loadErrorTags();
+                await searchErrors();
+            } catch (e) {
+                statusEl.style.color = '#d93025';
+                statusEl.textContent = `触发失败：${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
             }
         }
         // ── Phase 8 End ──────────────────────────────────────────────────
@@ -1128,17 +1412,20 @@
 
         function switchTab(tab) {
             _currentTab = tab;
-            ['tasks', 'research', 'code'].forEach(t => {
+            ['tasks', 'research', 'code', 'archive'].forEach(t => {
                 document.getElementById('tab-' + t).classList.toggle('active', t === tab);
                 document.getElementById('panel-' + t).classList.toggle('active', t === tab);
             });
-            const titles = { tasks: '任务看板', research: '研究看板', code: '代码任务' };
+            const titles = { tasks: '任务看板', research: '研究看板', code: '代码任务', archive: '回收站' };
             document.getElementById('sidebarTitle').textContent = titles[tab] || '';
+            // 切到回收站时自动刷新
+            if (tab === 'archive') refreshArchive();
         }
 
         function refreshCurrentTab() {
             if (_currentTab === 'tasks') refreshTasks();
             else if (_currentTab === 'research') refreshResearch();
+            else if (_currentTab === 'archive') refreshArchive();
             else refreshCode();
         }
 
@@ -1301,8 +1588,184 @@
             return m[s] || s || '未知';
         }
 
+        // ── 回收站面板 ─────────────────────────────────────────────
+        async function refreshArchive() {
+            try {
+                const res = await fetch('/api/v1/rollback-archive');
+                if (!res.ok) { renderArchiveList([]); return; }
+                const data = await res.json();
+                renderArchiveList(Array.isArray(data) ? data : []);
+            } catch { renderArchiveList([]); }
+        }
+
+        function renderArchiveList(items) {
+            const el = document.getElementById('archiveList');
+            if (!items.length) {
+                el.innerHTML = '<div class="archive-empty">🎉 回收站为空，没有被退回的对话</div>';
+                return;
+            }
+            el.innerHTML = items.map(item => {
+                const time = item.created_at
+                    ? new Date(item.created_at).toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })
+                    : '';
+                const annotation = item.annotation
+                    ? `<div class="ac-annotation">💬 ${escapeHtml(item.annotation)}</div>`
+                    : `<div class="ac-annotation"></div>`;
+                return `<div class="archive-card" data-id="${item.id}">
+                    <div class="ac-header">
+                        <span class="ac-title" title="${escapeHtml(item.conversation_title)}">${escapeHtml(item.conversation_title || '未命名对话')}</span>
+                        <span class="ac-time">${time}</span>
+                    </div>
+                    <div class="ac-user">👤 ${escapeHtml(item.user_content || '')}</div>
+                    <div class="ac-assistant">🤖 ${escapeHtml(item.assistant_content || '')}</div>
+                    ${annotation}
+                    <div class="ac-actions">
+                        <button onclick="event.stopPropagation(); annotateArchive('${item.id}', ${JSON.stringify(JSON.stringify(item.annotation || ''))})">✏️ 批注</button>
+                        <button onclick="event.stopPropagation(); viewArchiveDetail('${item.id}')">👁️ 详情</button>
+                        <button class="danger" onclick="event.stopPropagation(); deleteArchiveItem('${item.id}')">🗑️ 删除</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        async function annotateArchive(archiveId, currentAnnotation) {
+            const note = prompt('添加批注（说明为什么这次回复不满意）：', currentAnnotation || '');
+            if (note === null) return;  // 用户点了取消
+            try {
+                const res = await fetch(`/api/v1/rollback-archive/${archiveId}/annotate`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ annotation: note })
+                });
+                if (res.ok) refreshArchive();
+                else alert('批注保存失败');
+            } catch (e) { alert('网络错误: ' + e.message); }
+        }
+
+        async function viewArchiveDetail(archiveId) {
+            try {
+                const res = await fetch(`/api/v1/rollback-archive/${archiveId}`);
+                if (!res.ok) { alert('加载失败'); return; }
+                const item = await res.json();
+
+                const modal = document.getElementById('infoModal');
+                document.getElementById('modalTitle').textContent = '🗑️ 回滚详情';
+                const body = document.getElementById('modalBody');
+                body.innerHTML = `
+                    <div style="margin-bottom:12px;">
+                        <strong>对话标题：</strong>${escapeHtml(item.conversation_title || '未命名')}<br>
+                        <strong>模型：</strong>${escapeHtml(item.model)}<br>
+                        <strong>时间：</strong>${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : ''}
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <strong>👤 用户消息：</strong>
+                        <div style="background:#f0f4ff;padding:8px 12px;border-radius:6px;margin-top:4px;white-space:pre-wrap;font-size:12px;max-height:200px;overflow-y:auto;">${escapeHtml(item.user_content)}</div>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <strong>🤖 AI 回复：</strong>
+                        <div style="background:#f9f9f9;padding:8px 12px;border-radius:6px;margin-top:4px;white-space:pre-wrap;font-size:12px;max-height:300px;overflow-y:auto;">${escapeHtml(item.assistant_content)}</div>
+                    </div>
+                    ${item.tool_calls_summary ? `<div style="margin-bottom:12px;">
+                        <strong>🔧 工具调用：</strong>
+                        <div style="background:#f5f5f5;padding:6px 10px;border-radius:4px;margin-top:4px;font-size:11px;color:#666;">${escapeHtml(item.tool_calls_summary)}</div>
+                    </div>` : ''}
+                    <div>
+                        <strong>💬 批注：</strong>
+                        <div style="background:#fffbe6;padding:8px 12px;border-radius:6px;margin-top:4px;font-size:12px;min-height:40px;color:${item.annotation ? '#ad6800' : '#999'};">${item.annotation ? escapeHtml(item.annotation) : '暂无批注'}</div>
+                    </div>
+                `;
+                modal.style.display = 'flex';
+            } catch (e) { alert('加载失败: ' + e.message); }
+        }
+
+        async function deleteArchiveItem(archiveId) {
+            if (!confirm('确定删除这条归档记录？')) return;
+            try {
+                const res = await fetch(`/api/v1/rollback-archive/${archiveId}`, { method: 'DELETE' });
+                if (res.ok) refreshArchive();
+                else alert('删除失败');
+            } catch (e) { alert('网络错误: ' + e.message); }
+        }
+
+        async function clearAllArchive() {
+            if (!confirm('确定清空所有回收站记录？（通常在每日总结完成后执行）')) return;
+            try {
+                const res = await fetch('/api/v1/rollback-archive', { method: 'DELETE' });
+                if (res.ok) {
+                    refreshArchive();
+                    const data = await res.json();
+                    alert(`✅ 已清空 ${data.deleted_count || 0} 条归档记录`);
+                } else alert('清空失败');
+            } catch (e) { alert('网络错误: ' + e.message); }
+        }
+
         // ── Phase 7: 后端驱动的会话管理 ────────────────────────────
         let currentConversationId = null;
+
+        const chatStore = {
+            activeSessionId: null,
+            sessions: {}
+        };
+
+        function ensureSessionState(sessionId) {
+            const key = sessionId || '__pending__';
+            if (!chatStore.sessions[key]) {
+                chatStore.sessions[key] = {
+                    generation: 'idle',
+                    lastUserContent: null,
+                    lastUserModel: null,
+                    lastLoadingId: null,
+                };
+            }
+            return chatStore.sessions[key];
+        }
+
+        function getActiveSessionState() {
+            return ensureSessionState(chatStore.activeSessionId || currentConversationId || '__pending__');
+        }
+
+        function setActiveSession(sessionId) {
+            chatStore.activeSessionId = sessionId || '__pending__';
+            ensureSessionState(chatStore.activeSessionId);
+        }
+
+        function _logStateTransition(nextState, reason = '') {
+            const sid = chatStore.activeSessionId || currentConversationId || '__pending__';
+            console.log('[chat-state]', { sessionId: sid, nextState, reason });
+        }
+
+        function setGenerationState(nextState, reason = '') {
+            const state = getActiveSessionState();
+            state.generation = nextState;
+
+            if (nextState === 'streaming') {
+                _generating = true;
+                userInput.disabled = true;
+                sendBtn.disabled = false;
+                sendBtn.classList.add('stopping');
+                sendBtn.textContent = '● 停止';
+            } else if (nextState === 'stopping') {
+                _generating = true;
+                userInput.disabled = true;
+                sendBtn.disabled = false;
+                sendBtn.classList.add('stopping');
+                sendBtn.textContent = '⏹ 停止中...';
+            } else {
+                _generating = false;
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('stopping');
+                sendBtn.innerHTML = SEND_BTN_DEFAULT_HTML;
+            }
+
+            _logStateTransition(nextState, reason);
+            refreshMessageActionBars();
+        }
 
         // C-1: 从 API 加载对话列表，渲染到左侧历史栏
         async function renderHistoryList() {
@@ -1330,6 +1793,8 @@
         // C-1: 新建对话（向后端请求）
         async function createNewChat() {
             try {
+                stopGeneration();
+                resetGenerationState();
                 const res = await fetch('/api/v1/conversations', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1337,9 +1802,12 @@
                 });
                 const conv = await res.json();
                 currentConversationId = conv.id;
+                setActiveSession(conv.id);
                 localStorage.setItem('wateryLastConversationId', conv.id);
                 chatTitle.textContent = conv.title || '新对话';
                 chatMessages.innerHTML = '';
+                pendingAttachments = [];
+                renderAttachmentPreview();
                 showWelcomeMessage();
                 await renderHistoryList();
             } catch(e) {
@@ -1350,10 +1818,15 @@
         // C-1: 加载一个对话（从后端拉取完整消息列表）
         async function loadChat(convId) {
             if (!convId) return;
+            stopGeneration();
+            resetGenerationState();
             currentConversationId = convId;
+            setActiveSession(convId);
             localStorage.setItem('wateryLastConversationId', convId);
             chatMessages.innerHTML = '';
             chatTitle.textContent = '加载中...';
+            pendingAttachments = [];
+            renderAttachmentPreview();
             try {
                 const res = await fetch(`/api/v1/conversations/${convId}`);
                 if (!res.ok) { showWelcomeMessage(); return; }
@@ -1385,6 +1858,7 @@
                         appendMessageWithTools(msg.role, msg.content, displayToolCalls);
                     }
                 }
+                refreshMessageActionBars();
                 await renderHistoryList();
             } catch(e) {
                 console.error('loadChat failed:', e);
@@ -1448,10 +1922,36 @@
             console.log('历史对话迁移完成。');
         }
 
+        // ── 暂停/重试功能：全局状态 ──────────────────────────────────────
+        let _generating = false;
+        let _activeController = null;    // AbortController 实例
+        let _lastUserContent = null;     // 快照：最后一次用户消息内容
+        let _lastUserModel = null;       // 快照：最后一次使用的模型
+        let _lastLoadingId = null;       // 最后一个 loading 消息的 ID
+
+        function resetGenerationState() {
+            _activeController = null;
+            setGenerationState('idle', 'resetGenerationState');
+        }
+
+        function stopGeneration() {
+            const state = getActiveSessionState();
+            if (_activeController) {
+                setGenerationState('stopping', 'stopGeneration:abort');
+                _activeController.abort();
+                _activeController = null;
+                return;
+            }
+            if (state.generation === 'streaming' || state.generation === 'stopping' || _generating || sendBtn.classList.contains('stopping')) {
+                resetGenerationState();
+            }
+        }
+
         // 页面加载入口
         window.onload = async () => {
             loadModels();
             updateProxyUI();
+            setActiveSession(currentConversationId || '__pending__');
             // C-4: 先迁移旧 localStorage 数据
             await migrateLocalStorageToBackend();
             // 加载对话列表
@@ -1501,6 +2001,10 @@
         async function handleFileAttach(event) {
             const files = Array.from(event.target.files);
             event.target.value = ''; // 允许重复选择同一文件
+            await processFiles(files);
+        }
+
+        async function processFiles(files) {
             const MAX_SIZE = 20 * 1024 * 1024; // 20 MB
 
             for (const file of files) {
@@ -1524,20 +2028,26 @@
                         const formData = new FormData();
                         formData.append('file', file);
                         const res = await fetch('/api/v1/chat/upload', { method: 'POST', body: formData });
-                        document.getElementById(chipId)?.remove();
+                        pendingAttachments = pendingAttachments.filter(att => att.id !== chipId);
+                        renderAttachmentPreview();
                         if (!res.ok) {
                             const err = await res.json().catch(() => ({}));
                             alert(`处理《${file.name}》失败：${err.detail || res.statusText}`);
                             continue;
                         }
                         const data = await res.json();
-                        pendingAttachments.push({ type: 'text', name: data.name, content: data.content });
+                        pendingAttachments.push({ type: 'text', name: data.name, content: data.content, file_path: data.file_path });
                         renderAttachmentPreview();
                     }
                 } catch (e) {
                     alert(`附件处理异常：${e.message}`);
                 }
             }
+        }
+
+        function _showLoadingChip(name, id) {
+            pendingAttachments.push({ type: 'loading', name, id });
+            renderAttachmentPreview();
         }
 
         function _readAsDataURL(file) {
@@ -1558,16 +2068,6 @@
             });
         }
 
-        function _showLoadingChip(name, id) {
-            const area = document.getElementById('attachmentPreviewArea');
-            area.style.display = 'flex';
-            const chip = document.createElement('div');
-            chip.className = 'attachment-chip';
-            chip.id = id;
-            chip.innerHTML = `<span>⏳</span><span class="chip-name">${name.substring(0, 18)}</span><span class="chip-meta">上传中...</span>`;
-            area.appendChild(chip);
-        }
-
         function removeAttachment(index) {
             pendingAttachments.splice(index, 1);
             renderAttachmentPreview();
@@ -1582,6 +2082,14 @@
             }
             area.style.display = 'flex';
             area.innerHTML = pendingAttachments.map((att, i) => {
+                // loading 占位状态：显示进度动画（统一由 renderAttachmentPreview 管理）
+                if (att.type === 'loading') {
+                    return `<div class="attachment-chip" style="opacity:0.7;">
+                        <span>⏳</span>
+                        <span class="chip-name" title="${att.name}">${att.name.substring(0, 18)}</span>
+                        <span class="chip-meta">提取中...</span>
+                    </div>`;
+                }
                 if (att.type === 'image') {
                     return `<div class="attachment-chip">
                         <img src="${att.content}" alt="${att.name}">
@@ -1590,13 +2098,14 @@
                     </div>`;
                 }
                 const icon = /\.pdf$/i.test(att.name) ? '📄' : /\.docx?$/i.test(att.name) ? '📝' : '📃';
-                const sz = att.content.length >= 1000
+                const sz = (att.content || '').length >= 1000
                     ? `${Math.round(att.content.length / 1000)}K字`
-                    : `${att.content.length}字`;
+                    : `${(att.content || '').length}字`;
+                const pathTip = att.file_path ? ` · 已存盘` : '';
                 return `<div class="attachment-chip">
                     <span>${icon}</span>
                     <span class="chip-name" title="${att.name}">${att.name.substring(0, 18)}</span>
-                    <span class="chip-meta">${sz}</span>
+                    <span class="chip-meta">${sz}${pathTip}</span>
                     <button class="chip-remove" onclick="removeAttachment(${i})" title="移除">&times;</button>
                 </div>`;
             }).join('');
@@ -1638,6 +2147,7 @@
         function appendMessageWithTools(role, content, toolResults) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role}`;
+            if (role === 'assistant') msgDiv.dataset.actionable = '1';
 
             let html = '';
             // 工具调用卡片
@@ -1658,8 +2168,229 @@
                 html += content.replace(/\n/g, '<br>');
             }
             msgDiv.innerHTML = html;
+            if (role === 'assistant') _appendActionBar(msgDiv);
             chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+            if (role === 'assistant') refreshMessageActionBars();
+        }
+
+        // ── 操作栏注入、重试、编辑、复制函数 ──────────────────────────
+        function _appendActionBar(msgDiv, options = {}) {
+            if (!msgDiv || msgDiv.querySelector('.msg-action-bar')) return;
+
+            const {
+                showRollback = true,
+                showRetry = true,
+                disableActions = false,
+            } = options;
+
+            const actionBar = document.createElement('div');
+            actionBar.className = 'msg-action-bar';
+
+            const rollbackBtn = document.createElement('button');
+            rollbackBtn.className = 'msg-action-btn';
+            rollbackBtn.textContent = '↶ 回退';
+            rollbackBtn.onclick = (e) => { e.stopPropagation(); rollbackLastTurn(false); };
+            rollbackBtn.disabled = disableActions;
+            
+            const retryBtn = document.createElement('button');
+            retryBtn.className = 'msg-action-btn';
+            retryBtn.textContent = '↺ Retry';
+            retryBtn.onclick = (e) => { e.stopPropagation(); retryLastMessage(); };
+            retryBtn.disabled = disableActions;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'msg-action-btn';
+            copyBtn.textContent = '📋 Copy';
+            copyBtn.onclick = (e) => { e.stopPropagation(); copyMessage(msgDiv); };
+            copyBtn.disabled = disableActions;
+
+            if (showRollback) actionBar.appendChild(rollbackBtn);
+            if (showRetry) actionBar.appendChild(retryBtn);
+            actionBar.appendChild(copyBtn);
+            msgDiv.appendChild(actionBar);
+        }
+
+        function refreshMessageActionBars() {
+            const actionableAssistantMessages = Array.from(
+                chatMessages.querySelectorAll('.message.assistant[data-actionable="1"]')
+            );
+            if (!actionableAssistantMessages.length) return;
+
+            const state = getActiveSessionState();
+            const disableActions = state.generation === 'streaming' || state.generation === 'stopping';
+            const lastAssistant = actionableAssistantMessages[actionableAssistantMessages.length - 1];
+
+            for (const msgDiv of actionableAssistantMessages) {
+                const oldBar = msgDiv.querySelector('.msg-action-bar');
+                if (oldBar) oldBar.remove();
+
+                const isLast = msgDiv === lastAssistant;
+                _appendActionBar(msgDiv, {
+                    showRollback: isLast,
+                    showRetry: isLast,
+                    disableActions,
+                });
+            }
+        }
+
+        async function retryLastMessage() {
+            await rollbackLastTurn(true);
+        }
+
+        async function rollbackLastTurn(autoResend = false) {
+            if (!currentConversationId) {
+                alert('当前没有可回退的对话。');
+                return;
+            }
+
+            // 1. 回滚数据库
+            let restoredContent = '';
+            let rolledBackCount = 0;
+            try {
+                const rollbackResp = await fetch(
+                    `/api/v1/conversations/${currentConversationId}/rollback`,
+                    { method: 'DELETE' }
+                );
+                if (!rollbackResp.ok) throw new Error('Rollback failed');
+                const data = await rollbackResp.json().catch(() => ({}));
+                restoredContent = data.restored_content || '';
+                rolledBackCount = Number(data.rolled_back || 0);
+            } catch (e) {
+                console.error('Rollback error:', e);
+                alert('回滚失败：' + e.message);
+                return;
+            }
+
+            if (rolledBackCount <= 0) {
+                alert('没有可回退的消息轮次（可能当前会话还未成功入库）。');
+                return;
+            }
+
+            // 2. 重新加载会话，确保前后端状态一致
+            await loadChat(currentConversationId);
+
+            // 3. 恢复快照内容到输入框
+            if (restoredContent) {
+                userInput.value = restoredContent;
+                _lastUserContent = restoredContent;
+                const state = getActiveSessionState();
+                state.lastUserContent = restoredContent;
+            } else if (_lastUserContent) {
+                if (typeof _lastUserContent === 'string') {
+                    userInput.value = _lastUserContent;
+                } else {
+                    // 多模态内容，仅恢复文本部分
+                    const textParts = _lastUserContent.filter(p => p.type === 'text');
+                    userInput.value = textParts.map(p => p.text).join('\n');
+                }
+            }
+            userInput.focus();
+
+            // 4. 可选：重试模式下自动重新发送
+            if (autoResend && userInput.value.trim()) {
+                sendMessage();
+            }
+
+            // 5. 刷新回收站展示（若用户正处于回收站页可立即看到归档）
+            refreshArchive();
+        }
+
+        function editLastMessage() {
+            if (!_lastUserContent) return;
+            if (typeof _lastUserContent === 'string') {
+                userInput.value = _lastUserContent;
+            } else {
+                const textParts = _lastUserContent.filter(p => p.type === 'text');
+                userInput.value = textParts.map(p => p.text).join('\n');
+            }
+            userInput.focus();
+        }
+
+        function parseSSEEvents(buffer, onParseError) {
+            const events = [];
+            let rest = buffer;
+
+            while (true) {
+                const frameEnd = rest.indexOf('\n\n');
+                if (frameEnd === -1) break;
+
+                const frame = rest.slice(0, frameEnd);
+                rest = rest.slice(frameEnd + 2);
+
+                if (!frame.trim()) continue;
+
+                const dataLines = frame
+                    .split('\n')
+                    .filter(line => line.startsWith('data:'))
+                    .map(line => line.slice(5).trimStart());
+
+                if (!dataLines.length) continue;
+
+                const payload = dataLines.join('\n').trim();
+                if (!payload) continue;
+
+                try {
+                    events.push(JSON.parse(payload));
+                } catch (err) {
+                    if (onParseError) onParseError(err, payload);
+                }
+            }
+
+            return { events, rest };
+        }
+
+        function normalizeStreamEvent(rawEvent) {
+            if (!rawEvent || typeof rawEvent !== 'object') return null;
+            const type = rawEvent.event || rawEvent.type;
+            if (!type) return null;
+
+            if (type === 'text_delta') {
+                return { type, delta: rawEvent.delta || '' };
+            }
+            if (type === 'tool_start') {
+                return {
+                    type,
+                    tool_name: rawEvent.tool_name || 'unknown_tool',
+                    tool_call_id: rawEvent.tool_call_id || rawEvent.call_id || '',
+                };
+            }
+            if (type === 'tool_result') {
+                return {
+                    type,
+                    tool_name: rawEvent.tool_name || 'unknown_tool',
+                    tool_call_id: rawEvent.tool_call_id || rawEvent.call_id || '',
+                    ok: Boolean(rawEvent.ok),
+                    result: rawEvent.result,
+                };
+            }
+            if (type === 'usage') {
+                return { type, usage: rawEvent.usage || {} };
+            }
+            if (type === 'done') {
+                return {
+                    type,
+                    content: rawEvent.content || '',
+                    finish_reason: rawEvent.finish_reason || 'stop',
+                };
+            }
+            if (type === 'error') {
+                return {
+                    type,
+                    message: rawEvent.message || rawEvent.error || '未知错误',
+                };
+            }
+            return null;
+        }
+
+        function copyMessage(msgDiv) {
+            // 提取消息文本（去掉 HTML 标签）
+            const text = msgDiv.innerText || msgDiv.textContent;
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(
+                () => console.log('Copied to clipboard'),
+                (err) => console.error('Copy failed:', err)
+            );
         }
 
         // C-2: 新版 sendMessage — 只发单条用户消息 + conversation_id，历史由后端管理
@@ -1668,17 +2399,13 @@
             const hasAttachments = pendingAttachments.length > 0;
             if (!text && !hasAttachments) return;
 
+            const state = getActiveSessionState();
+            if (state.generation === 'streaming' || state.generation === 'stopping') return;
+
             // 快照并清空附件列表
             const attachmentsSnap = [...pendingAttachments];
             pendingAttachments = [];
             renderAttachmentPreview();
-
-            userInput.value = '';
-            userInput.disabled = true;
-            sendBtn.disabled = true;
-
-            // 渲染用户消息（含附件预览）
-            appendUserMessage(text, attachmentsSnap);
 
             // 构建发送给 LLM 的 content：纯文本 or 多模态数组
             const imgAttachments = attachmentsSnap.filter(a => a.type === 'image');
@@ -1689,7 +2416,9 @@
                 const excerpt = tf.content.length > 8000
                     ? tf.content.substring(0, 8000) + '\n…(内容过长，已截断)'
                     : tf.content;
-                fullText += `\n\n---\n[附件：${tf.name}]\n\`\`\`\n${excerpt}\n\`\`\``;
+                // 如果后端已保存文件到磁盘，将路径告知 AI
+                const pathHint = tf.file_path ? `\n文件已保存到: ${tf.file_path}` : '';
+                fullText += `\n\n---\n[附件：${tf.name}]${pathHint}\n\`\`\`\n${excerpt}\n\`\`\``;
             }
 
             let messageContent;
@@ -1705,6 +2434,18 @@
                 messageContent = fullText || '';
             }
 
+            userInput.value = '';
+            setGenerationState('streaming', 'sendMessage:start');
+            
+            // 保存快照用于重试
+            _lastUserContent = messageContent;
+            _lastUserModel = modelSelect.value;
+            state.lastUserContent = messageContent;
+            state.lastUserModel = modelSelect.value;
+
+            // 渲染用户消息（含附件预览）
+            appendUserMessage(text, attachmentsSnap);
+
             const loadingId = 'loading-' + Date.now();
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'message assistant';
@@ -1712,6 +2453,8 @@
             loadingDiv.textContent = isIntentionMode ? '正在拆解并分发任务...' : '思考中...';
             chatMessages.appendChild(loadingDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+            _lastLoadingId = loadingId;
+            state.lastLoadingId = loadingId;
 
             try {
                 if (isIntentionMode) {
@@ -1740,43 +2483,183 @@
                     if (!currentConversationId) {
                         await createNewChat();
                     }
-                    const response = await fetch('/api/v1/chat', {
+                    // 创建 AbortController 用于停止请求
+                    _activeController = new AbortController();
+                    
+                    const response = await fetch('/api/v1/chat/stream', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             conversation_id: currentConversationId,
                             messages: [{ role: 'user', content: messageContent }],
                             model: modelSelect.value
-                        })
+                        }),
+                        signal: _activeController.signal
                     });
-                    const data = await response.json();
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || '请求失败');
+                    }
+
+                    // 开始消费 SSE
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let sseBuffer = '';
+                    let assistantMessageDiv = null;
+                    let textContentSpan = null;
+                    let toolCardsContainer = null;
+                    let fullText = "";
+
+                    // 移除 "思考中..."
                     document.getElementById(loadingId)?.remove();
-                    if (response.ok) {
-                        const toolResults = data.tool_results || null;
-                        appendMessageWithTools('assistant', data.content, toolResults);
-                        // 后端可能返回最终 conversation_id（首次创建时）
-                        if (data.conversation_id) {
-                            currentConversationId = data.conversation_id;
-                            localStorage.setItem('wateryLastConversationId', data.conversation_id);
-                        }
-                        // 异步刷新侧边栏（更新标题、排序）
-                        renderHistoryList().then(() => {
-                            const activeItem = historyList.querySelector('.history-item.active');
-                            if (activeItem) chatTitle.textContent = activeItem.textContent;
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        sseBuffer += decoder.decode(value, { stream: true });
+                        const parsed = parseSSEEvents(sseBuffer, (err, payload) => {
+                            console.error('Error parsing SSE event:', err, payload);
                         });
-                    } else {
-                        appendMessage('assistant', `❌ 错误: ${data.detail || '请求失败'}`);
+                        sseBuffer = parsed.rest;
+
+                        for (const event of parsed.events) {
+                            const normalizedEvent = normalizeStreamEvent(event);
+                            if (!normalizedEvent) continue;
+
+                            if (normalizedEvent.type === 'text_delta') {
+                                if (!assistantMessageDiv) {
+                                    assistantMessageDiv = document.createElement('div');
+                                    assistantMessageDiv.className = 'message assistant';
+                                    textContentSpan = document.createElement('span');
+                                    textContentSpan.className = 'stream-text';
+                                    assistantMessageDiv.appendChild(textContentSpan);
+                                    chatMessages.appendChild(assistantMessageDiv);
+                                }
+                                fullText += normalizedEvent.delta;
+                                textContentSpan.textContent = fullText;
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+                            else if (normalizedEvent.type === 'tool_start') {
+                                if (!toolCardsContainer) {
+                                    toolCardsContainer = document.createElement('div');
+                                    toolCardsContainer.className = 'tool-cards-container';
+                                    if (assistantMessageDiv) {
+                                        assistantMessageDiv.insertBefore(toolCardsContainer, textContentSpan);
+                                    } else {
+                                        assistantMessageDiv = document.createElement('div');
+                                        assistantMessageDiv.className = 'message assistant';
+                                        assistantMessageDiv.appendChild(toolCardsContainer);
+                                        chatMessages.appendChild(assistantMessageDiv);
+                                    }
+                                }
+                                const card = document.createElement('div');
+                                card.className = 'tool-call-card pending';
+                                card.id = `tool-${normalizedEvent.tool_call_id}`;
+                                card.innerHTML = `⏳ 正在调用工具: <strong>${normalizedEvent.tool_name}</strong>...`;
+                                toolCardsContainer.appendChild(card);
+                                chatMessages.scrollTop = chatMessages.scrollHeight;
+                            }
+                            else if (normalizedEvent.type === 'tool_result') {
+                                const card = document.getElementById(`tool-${normalizedEvent.tool_call_id}`);
+                                if (card) {
+                                    card.className = normalizedEvent.ok ? 'tool-call-card success' : 'tool-call-card error';
+                                    card.innerHTML = `${normalizedEvent.ok ? '🔧' : '❌'} 工具 <strong>${normalizedEvent.tool_name}</strong> 执行${normalizedEvent.ok ? '成功' : '失败'}`;
+                                    card.title = JSON.stringify(normalizedEvent.result, null, 2);
+                                }
+                            }
+                            else if (normalizedEvent.type === 'usage') {
+                                console.log('Stream usage:', normalizedEvent.usage);
+                            }
+                            else if (normalizedEvent.type === 'done') {
+                                console.log('Stream finished:', normalizedEvent);
+                                if (assistantMessageDiv) {
+                                    assistantMessageDiv.dataset.actionable = '1';
+                                    refreshMessageActionBars();
+                                }
+                                setGenerationState('idle', 'stream:done');
+                            }
+                            else if (normalizedEvent.type === 'error') {
+                                appendMessage('assistant', `❌ 错误: ${normalizedEvent.message}`);
+                                setGenerationState('error', 'stream:error');
+                            }
+                        }
                     }
                 }
             } catch (error) {
-                document.getElementById(loadingId)?.remove();
-                appendMessage('assistant', `❌ 网络错误: ${error.message}`);
+                if (error.name === 'AbortError') {
+                    // 用户主动停止
+                    const loadingDiv = document.getElementById(loadingId);
+                    if (loadingDiv) {
+                        loadingDiv.innerHTML = '<span class="stopped-badge">⏸ 已停止</span>';
+                    }
+                    setGenerationState('idle', 'sendMessage:abort');
+                } else {
+                    document.getElementById(loadingId)?.remove();
+                    appendMessage('assistant', `❌ 网络错误: ${error.message}`);
+                    setGenerationState('error', 'sendMessage:network-error');
+                }
             } finally {
-                userInput.disabled = false;
-                sendBtn.disabled = false;
+                resetGenerationState();
                 userInput.focus();
             }
         }
+        // ── 拖放上传支持 ─────────────────────────────────────────
+        // 防止浏览器默认拖放导航行为（导致页面跳转）
+        document.addEventListener('dragover', e => e.preventDefault());
+        document.addEventListener('drop', e => e.preventDefault());
+
+        (function initDragDrop() {
+            const container = document.querySelector('.chat-input-container');
+            if (!container) return;
+
+            container.addEventListener('dragenter', e => {
+                e.preventDefault();
+                container.classList.add('drag-over');
+            });
+
+            container.addEventListener('dragover', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                container.classList.add('drag-over');
+            });
+
+            container.addEventListener('dragleave', e => {
+                // 只有鼠标完全离开容器时才移除高亮
+                if (!container.contains(e.relatedTarget)) {
+                    container.classList.remove('drag-over');
+                }
+            });
+
+            container.addEventListener('drop', async e => {
+                e.preventDefault();
+                e.stopPropagation();
+                container.classList.remove('drag-over');
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length) await processFiles(files);
+            });
+
+            // 对话区也支持拖入（指向同一处理逻辑）
+            const chatArea = document.getElementById('chatMessages');
+            if (chatArea) {
+                chatArea.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    container.classList.add('drag-over');
+                });
+                chatArea.addEventListener('dragleave', e => {
+                    if (!container.contains(e.relatedTarget) && !chatArea.contains(e.relatedTarget)) {
+                        container.classList.remove('drag-over');
+                    }
+                });
+                chatArea.addEventListener('drop', async e => {
+                    e.preventDefault();
+                    container.classList.remove('drag-over');
+                    const files = Array.from(e.dataTransfer.files);
+                    if (files.length) await processFiles(files);
+                });
+            }
+        })();
     </script>
 </body>
 </html>
