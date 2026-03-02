@@ -1,8 +1,7 @@
 services:
   api:
     # 启用自动构建推送后，你可以直接使用镜像名
-    # 请手动将其中的 <YOUR_GITHUB_USER> 替换为你的真实 GitHub 用户名
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-YOUR_GITHUB_USER}/watery:latest
+    image: ghcr.io/neko-yukari/watery:latest
     build:
       context: .
     container_name: watery_api
